@@ -151,17 +151,17 @@ def get_market_klines(symbol=SYMBOL, timeframe_type=TIMEFRAME_KUCOIN, limit=HIST
         return pd.DataFrame()
 
 def save_klines_locally(df_new_klines, symbol, timeframe):
-    # Utiliser une sous-structure si vous voulez garder les klines séparées
     klines_dir = os.path.join(PERSISTENT_DATA_PATH, "klines_data") 
     if not os.path.exists(klines_dir):
         try:
-            os.makedirs(klines_dir, exist_ok=True)
+            os.makedirs(klines_dir, exist_ok=True) # exist_ok=True est important
             logging.info(f"Création du répertoire de klines: {klines_dir}")
         except Exception as e:
             logging.error(f"Impossible de créer le répertoire de klines {klines_dir}: {e}")
-            # En cas d'échec, on essaie de sauvegarder dans PERSISTENT_DATA_PATH directement
-            klines_dir = PERSISTENT_DATA_PATH
-    filename = f"local_klines_{symbol.replace('-', '_')}_{timeframe}.csv" # Nom de fichier cohérent
+            klines_dir = PERSISTENT_DATA_PATH # Repli
+
+    # Construire le chemin complet du fichier
+    filename = os.path.join(klines_dir, f"local_klines_{symbol.replace('-', '_')}_{timeframe}.csv")
     df_to_save = df_new_klines.copy()
     if df_to_save.index.name is None: df_to_save.index.name = 'Open time'
     if os.path.exists(filename):
