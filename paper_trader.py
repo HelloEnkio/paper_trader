@@ -274,7 +274,7 @@ def trading_bot_logic():
         df_market['SMA_200'] = df_market['Close'].rolling(window=200, min_periods=200).mean()
     
     adx_col = f"ADX_{BEST_PARAMS['adx_len']}"; rsi_col = f"RSI_{BEST_PARAMS['rsi_len']}"
-    sma_s_col = f"SMA_{BEST_PARAMS['sma_short']}"]; sma_l_col = f"SMA_{BEST_PARAMS['sma_long']}"
+    sma_s_col = f"SMA_{BEST_PARAMS['sma_short']}"; sma_l_col = f"SMA_{BEST_PARAMS['sma_long']}"
 
     if hasattr(df_market, 'ta'):
         if adx_col not in df_market.columns or df_market[adx_col].isnull().all(): df_market.ta.adx(length=BEST_PARAMS['adx_len'], append=True)
