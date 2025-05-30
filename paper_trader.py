@@ -35,6 +35,10 @@ else:
 BASE_URL = 'https://api.kucoin.com'
 SYMBOL = "ETH-USDT"
 TIMEFRAME_KUCOIN = '1hour' 
+TIMEFRAME_TO_MINUTES = {
+    '1min': 1, '3min': 3, '5min': 5, '15min': 15, '30min': 30, 
+    '1hour': 60, '2hour': 120 # Ajoutez d'autres si nécessaire pour KuCoin
+}
 HISTORICAL_DATA_FETCH_LIMIT = 350 # Nombre de bougies à récupérer
 
 BEST_PARAMS = {
