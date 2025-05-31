@@ -257,7 +257,7 @@ def get_kline_data_for_trade():
             "sma_long": [x if pd.notnull(x) else None for x in df_trade_period_klines[f'SMA_{BEST_PARAMS["sma_long"]}'].tolist()],
             "adx": [x if pd.notnull(x) else None for x in df_trade_period_klines[adx_col].tolist()],
             "rsi": [x if pd.notnull(x) else None for x in df_trade_period_klines[rsi_col].tolist()],
-            "trade_info":: { # Ajouter les infos du trade pour les marqueurs
+            "trade_info": { # Ajouter les infos du trade pour les marqueurs
                 "entry_price": trade_info.get('EntryPrice'),
                 "entry_time": pd.to_datetime(trade_info.get('EntryTimeUTC')).strftime('%Y-%m-%d %H:%M:%S'),
                 "exit_price": trade_info.get('ExitPrice'),
