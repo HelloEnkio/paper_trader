@@ -26,7 +26,7 @@ BEST_PARAMS = {
     'rsi_len': 10, 'rsi_os': 35, 'rsi_ob_exit': 65,
     'sl': 0.02, 'tp': 0.088 
 }
-INITIAL_PAPER_CAPITAL = 50.0 # Doit correspondre à celui de votre paper_trader.py
+INITIAL_PAPER_CAPITAL = 44.42 # Doit correspondre à celui de votre paper_trader.py
 
 app = Flask(__name__)
 
