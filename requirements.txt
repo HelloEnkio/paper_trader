@@ -6,3 +6,4 @@ schedule
 python-dotenv
 setuptools
 matplotlib
+Flask
