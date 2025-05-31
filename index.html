@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Paper Trading Bot Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .metric { margin-bottom: 10px; }
+        .metric span { font-weight: bold; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        #activityLog { white-space: pre-wrap; background-color: #f5f5f5; padding: 10px; max-height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>Tableau de Bord - Paper Trading Bot</h1>
+
+    <h2>Performance Actuelle</h2>
+    <div class="metric">Capital Papier Actuel: <span id="currentCapital">Chargement...</span> USDT</div>
+    <div class="metric">Rendement Total: <span id="totalReturn">Chargement...</span>%</div>
+    <div class="metric">Drawdown Max: <span id="maxDrawdown">Chargement...</span>%</div>
+    <div class="metric">Nombre de Trades: <span id="numTrades">Chargement...</span></div>
+    <div class="metric">Taux de Réussite: <span id="winRate">Chargement...</span>%</div>
+
+    <h2>Courbe d'Équité</h2>
+    <canvas id="equityCurveChart" width="400" height="200"></canvas>
+
+    <h2>Historique des Trades</h2>
+    <table id="tradesTable">
+        <thead>
+            <tr>
+                <th>Entrée (UTC)</th>
+                <th>Prix Entrée</th>
+                <th>Sortie (UTC)</th>
+                <th>Prix Sortie</th>
+                <th>Quantité</th>
+                <th>PnL Abs</th>
+                <th>PnL %</th>
+                <th>Raison</th>
+            </tr>
+        </thead>
+        <tbody>
+            </tbody>
+    </table>
+
+    <h2>Log d'Activité Récent</h2>
+    <pre id="activityLog">Chargement...</pre>
+
+    <script>
+        async function fetchDataAndUpdateDashboard() {
+            try {
+                const response = await fetch('/dashboard_data');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                // Mise à jour des métriques
+                document.getElementById('currentCapital').textContent = parseFloat(data.performance_summary.current_equity).toFixed(2);
+                document.getElementById('totalReturn').textContent = parseFloat(data.performance_summary.total_return_pct).toFixed(2);
+                document.getElementById('maxDrawdown').textContent = parseFloat(data.performance_summary.max_drawdown_pct).toFixed(2);
+                document.getElementById('numTrades').textContent = data.performance_summary.num_trades;
+                document.getElementById('winRate').textContent = parseFloat(data.performance_summary.win_rate_pct).toFixed(2);
+
+                // Mise à jour du tableau des trades
+                const tradesTableBody = document.getElementById('tradesTable').getElementsByTagName('tbody')[0];
+                tradesTableBody.innerHTML = ""; // Clear existing rows
+                if (data.trades_history && data.trades_history.length > 0 && !data.trades_history[0].error) {
+                    data.trades_history.forEach(trade => {
+                        let row = tradesTableBody.insertRow();
+                        row.insertCell().textContent = trade.EntryTimeUTC || 'N/A';
+                        row.insertCell().textContent = trade.EntryPrice;
+                        row.insertCell().textContent = trade.ExitTimeUTC || 'N/A';
+                        row.insertCell().textContent = trade.ExitPrice;
+                        row.insertCell().textContent = parseFloat(trade.Quantity).toFixed(8);
+                        row.insertCell().textContent = parseFloat(trade.PnL_Abs).toFixed(2);
+                        row.insertCell().textContent = (parseFloat(trade.PnL_Pct) * 100).toFixed(2) + '%';
+                        row.insertCell().textContent = trade.ExitReason;
+                    });
+                } else if (data.trades_history && data.trades_history.length > 0 && data.trades_history[0].error) {
+                     let row = tradesTableBody.insertRow();
+                     let cell = row.insertCell();
+                     cell.colSpan = 8;
+                     cell.textContent = data.trades_history[0].error;
+                } else {
+                    let row = tradesTableBody.insertRow();
+                    let cell = row.insertCell();
+                    cell.colSpan = 8;
+                    cell.textContent = "Aucun trade pour l'instant.";
+                }
+                
+                // Mise à jour du log d'activité
+                document.getElementById('activityLog').textContent = data.activity_log.join("");
+
+                // Mise à jour du graphique de la courbe d'équité
+                const ctxEquity = document.getElementById('equityCurveChart').getContext('2d');
+                // Détruire l'ancien graphique s'il existe pour éviter les superpositions
+                if (window.myEquityChart) {
+                    window.myEquityChart.destroy();
+                }
+                if (data.performance_summary.equity_curve_values && data.performance_summary.equity_curve_timestamps) {
+                    window.myEquityChart = new Chart(ctxEquity, {
+                        type: 'line',
+                        data: {
+                            labels: data.performance_summary.equity_curve_timestamps.map(t => t ? t.split('.')[0] : 'Début'), // Simplifier le timestamp
+                            datasets: [{
+                                label: 'Équité du Paper Trading',
+                                data: data.performance_summary.equity_curve_values,
+                                borderColor: 'rgb(75, 192, 192)',
+                                tension: 0.1
+                            }]
+                        },
+                        options: { scales: { y: { beginAtZero: false } } }
+                    });
+                }
+            } catch (error) {
+                console.error("Erreur lors de la récupération ou de la mise à jour du dashboard:", error);
+                document.getElementById('currentCapital').textContent = "Erreur";
+            }
+        }
+
+        // Charger les données au démarrage et rafraîchir toutes les 30 secondes
+        fetchDataAndUpdateDashboard();
+        setInterval(fetchDataAndUpdateDashboard, 30000); // 30 secondes
+    </script>
+</body>
+</html>
