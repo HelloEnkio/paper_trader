@@ -58,59 +58,65 @@ def generate_simple_rsi_signals(df_period_in, rsi_length, rsi_oversold, rsi_over
 
 def calculate_performance_metrics(df_trades, initial_capital):
     if df_trades.empty:
-        return {"total_return_pct": 0, "max_drawdown_pct": 0, "sharpe_ratio": np.nan, "num_trades": 0, 
-                "win_rate_pct": 0, "profit_factor": 0, "current_equity": initial_capital, "pnl_total_abs":0,
-                "equity_curve_values": [initial_capital], "equity_curve_timestamps": [None]} # Timestamp initial à None
+        return {
+            "total_return_pct": 0, "max_drawdown_pct": 0, "sharpe_ratio": None, # Utiliser None pour JSON
+            "num_trades": 0, "win_rate_pct": 0, "profit_factor": 0,
+            "current_equity": initial_capital, "pnl_total_abs":0,
+            "equity_curve_values": [initial_capital], 
+            "equity_curve_timestamps": [datetime.now(timezone.utc).isoformat()] # Timestamp de début
+        }
 
     current_equity = initial_capital
     equity_over_time_values = [initial_capital]
-    # Utiliser les timestamps de sortie des trades pour l'axe X de la courbe d'équité
-    # Le premier point est le capital initial avant tout trade.
-    equity_over_time_timestamps = [df_trades['EntryTimeUTC'].iloc[0] if not df_trades.empty else None] # Timestamp du début du premier trade
+    
+    # Utiliser le timestamp du premier trade s'il existe, sinon une valeur par défaut
+    first_trade_timestamp = None
+    if not df_trades.empty and 'EntryTimeUTC' in df_trades.columns and pd.notnull(df_trades['EntryTimeUTC'].iloc[0]):
+        try:
+            first_trade_timestamp = pd.to_datetime(df_trades['EntryTimeUTC'].iloc[0]).isoformat()
+        except: # Si la conversion échoue
+            first_trade_timestamp = datetime.now(timezone.utc).isoformat() 
+    else:
+        first_trade_timestamp = datetime.now(timezone.utc).isoformat() 
+        
+    equity_over_time_timestamps = [first_trade_timestamp]
+
 
     df_trades['PnL_Abs'] = pd.to_numeric(df_trades['PnL_Abs'], errors='coerce').fillna(0)
-    df_trades['ExitTimeUTC'] = pd.to_datetime(df_trades['ExitTimeUTC'], errors='coerce')
+    # S'assurer que ExitTimeUTC est bien un objet datetime avant d'essayer .isoformat()
+    df_trades['ExitTimeUTC_dt'] = pd.to_datetime(df_trades['ExitTimeUTC'], errors='coerce')
 
 
     for idx, row in df_trades.iterrows():
         current_equity += row['PnL_Abs']
         equity_over_time_values.append(current_equity)
-        equity_over_time_timestamps.append(row['ExitTimeUTC']) # Timestamp de sortie du trade
+        if pd.notnull(row['ExitTimeUTC_dt']):
+            equity_over_time_timestamps.append(row['ExitTimeUTC_dt'].isoformat())
+        else: # Fallback si la date de sortie est manquante
+            equity_over_time_timestamps.append(datetime.now(timezone.utc).isoformat()) 
     
-    equity_series = pd.Series(equity_over_time_values, index=pd.to_datetime(equity_over_time_timestamps, utc=True))
-    # S'il y a des NaT dans l'index (par ex. le premier None), on les gère
-    equity_series = equity_series[equity_series.index.notna()]
-    if equity_series.empty: # Si après le filtre, c'est vide (devrait pas arriver si trades)
-         return {"total_return_pct": 0, "max_drawdown_pct": 0, "sharpe_ratio": np.nan, "num_trades": 0, 
-                "win_rate_pct": 0, "profit_factor": 0, "current_equity": initial_capital, "pnl_total_abs":0,
-                "equity_curve_values": [initial_capital], "equity_curve_timestamps": [None]}
-
-
+    # Convertir les timestamps de l'index en string pour JSON
+    # equity_series = pd.Series(equity_over_time_values, index=pd.to_datetime(equity_over_time_timestamps, utc=True, errors='coerce'))
+    # equity_series = equity_series[equity_series.index.notna()]
+    # Plutôt que de créer une série pandas juste pour ça, on a déjà les listes
+    
     total_return_pct = (current_equity / initial_capital - 1) if initial_capital > 0 else 0
     
-    peak = equity_series.expanding(min_periods=1).max()
-    drawdown = (equity_series / peak) - 1
-    max_drawdown_pct = drawdown.min()
-    
-    # Calcul du Sharpe Ratio basé sur les rendements périodiques de l'équité (trade par trade)
-    equity_periodic_returns = equity_series.pct_change().fillna(0.0)
-    sharpe_ratio = np.nan
-    if not equity_periodic_returns.empty and equity_periodic_returns.std(ddof=0) != 0:
-        # L'annualisation est délicate ici sans connaître la fréquence exacte des trades.
-        # On peut faire un Sharpe simple sur les rendements des trades, ou estimer.
-        # Pour un Sharpe Ratio annualisé, il faudrait des rendements à fréquence fixe (ex: quotidiens).
-        # On peut calculer un Sharpe "par trade" pour l'instant.
-        # Ou si les trades sont assez fréquents, on peut annualiser grossièrement.
-        # Supposons une durée moyenne de trade pour annualiser (besoin de timestamps pour ça)
-        # Pour l'instant, calculons un Sharpe simplifié non annualisé ou mettons NaN.
-        try:
-            # Si on a assez de trades pour une estimation
-            if len(equity_periodic_returns) > 20 : # Au moins 20 trades pour une stat un peu stable
-                 # Supposons que les trades sont la "période"
-                sharpe_ratio = (equity_periodic_returns.mean() / equity_periodic_returns.std(ddof=0)) * np.sqrt(len(equity_periodic_returns)) # sqrt(N) pour annualiser grossièrement
-        except ZeroDivisionError:
-            sharpe_ratio = np.nan
+    # Calcul du Max Drawdown sur les valeurs d'équité
+    temp_equity_series_for_dd = pd.Series(equity_over_time_values)
+    peak_dd = temp_equity_series_for_dd.expanding(min_periods=1).max()
+    drawdown_dd = (temp_equity_series_for_dd / peak_dd) - 1
+    max_drawdown_pct = drawdown_dd.min() if not drawdown_dd.empty else 0
 
+    sharpe_ratio = None # Initialiser à None (valide en JSON)
+    # Calcul du Sharpe Ratio (simplifié, basé sur les rendements des trades)
+    if not df_trades.empty and 'PnL_Pct' in df_trades.columns:
+        trade_returns = pd.to_numeric(df_trades['PnL_Pct'], errors='coerce').fillna(0)
+        if len(trade_returns) > 1 and trade_returns.std(ddof=0) != 0:
+            # Sharpe par trade (non annualisé)
+            # sharpe_ratio_per_trade = trade_returns.mean() / trade_returns.std(ddof=0)
+            # Pour une estimation annualisée, c'est plus complexe ici. Laisser à None pour l'instant.
+             pass # Laisser sharpe_ratio à None ou implémenter une annualisation plus tard
 
     num_trades = len(df_trades)
     winning_trades = df_trades[df_trades['PnL_Abs'] > 0]
@@ -123,16 +129,15 @@ def calculate_performance_metrics(df_trades, initial_capital):
     return {
         "total_return_pct": total_return_pct * 100,
         "max_drawdown_pct": max_drawdown_pct * 100,
-        "sharpe_ratio": sharpe_ratio, 
+        "sharpe_ratio": sharpe_ratio, # Sera None si non calculé
         "num_trades": num_trades,
         "win_rate_pct": win_rate_pct,
-        "profit_factor": profit_factor,
+        "profit_factor": profit_factor if profit_factor != float('inf') else None, # Renvoyer None si infini
         "current_equity": current_equity,
         "pnl_total_abs": current_equity - initial_capital,
-        "equity_curve_values": equity_series.tolist(),
-        "equity_curve_timestamps": [ts.isoformat() if pd.notnull(ts) else None for ts in equity_series.index.tolist()]
+        "equity_curve_values": equity_over_time_values,
+        "equity_curve_timestamps": equity_over_time_timestamps 
     }
-
 @app.route('/')
 def index_page():
     return render_template("index.html") 
@@ -247,11 +252,12 @@ def get_kline_data_for_trade():
             "low": df_trade_period_klines['Low'].tolist(),
             "close": df_trade_period_klines['Close'].tolist(),
             "volume": df_trade_period_klines['Volume'].tolist(),
-            "sma_short": df_trade_period_klines[f'SMA_{BEST_PARAMS["sma_short"]}'].fillna(None).tolist(), # Remplacer NaN par None pour JSON
-            "sma_long": df_trade_period_klines[f'SMA_{BEST_PARAMS["sma_long"]}'].fillna(None).tolist(),
-            "adx": df_trade_period_klines[adx_col].fillna(None).tolist(),
-            "rsi": df_trade_period_klines[rsi_col].fillna(None).tolist(),
-            "trade_info": { # Ajouter les infos du trade pour les marqueurs
+            # Remplacer NaN par None pour la sérialisation JSON
+            "sma_short": [x if pd.notnull(x) else None for x in df_trade_period_klines[f'SMA_{BEST_PARAMS["sma_short"]}'].tolist()],
+            "sma_long": [x if pd.notnull(x) else None for x in df_trade_period_klines[f'SMA_{BEST_PARAMS["sma_long"]}'].tolist()],
+            "adx": [x if pd.notnull(x) else None for x in df_trade_period_klines[adx_col].tolist()],
+            "rsi": [x if pd.notnull(x) else None for x in df_trade_period_klines[rsi_col].tolist()],
+            "trade_info":: { # Ajouter les infos du trade pour les marqueurs
                 "entry_price": trade_info.get('EntryPrice'),
                 "entry_time": pd.to_datetime(trade_info.get('EntryTimeUTC')).strftime('%Y-%m-%d %H:%M:%S'),
                 "exit_price": trade_info.get('ExitPrice'),
