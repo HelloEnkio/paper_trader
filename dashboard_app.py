@@ -306,6 +306,109 @@ def get_kline_data_for_trade():
         logging.exception("Erreur dans /api/kline_data_for_trade") # Log traceback complet côté serveur
         return jsonify({"error": f"Erreur serveur inattendue: {str(e)}"}), 500
 
+# Fonction utilitaire pour calculer les indicateurs sur un DataFrame donné
+def add_strategy_indicators(df_market_data, params):
+    df_with_indicators = df_market_data.copy()
+    
+    # S'assurer que les colonnes nécessaires existent
+    required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+    if not all(col in df_with_indicators.columns for col in required_cols):
+        missing = [col for col in required_cols if col not in df_with_indicators.columns]
+        logging.error(f"Colonnes manquantes pour add_strategy_indicators: {missing} dans le DataFrame avec index: {df_with_indicators.index.name} et colonnes: {df_with_indicators.columns}")
+        return pd.DataFrame() # Retourner vide si colonnes essentielles manquent
+
+    # Calculer SMA_200 si elle n'est pas déjà là 
+    if 'SMA_200' not in df_with_indicators.columns or df_with_indicators['SMA_200'].isnull().all():
+        df_with_indicators['SMA_200'] = df_with_indicators['Close'].rolling(window=200, min_periods=200).mean()
+    
+    adx_col = f"ADX_{params['adx_len']}"; rsi_col = f"RSI_{params['rsi_len']}"
+    sma_s_col = f"SMA_{params['sma_short']}"]; sma_l_col = f"SMA_{params['sma_long']}"
+
+    if hasattr(df_with_indicators, 'ta'):
+        # Calculer seulement si la colonne n'existe pas ou est pleine de NaN
+        if adx_col not in df_with_indicators.columns or df_with_indicators[adx_col].isnull().all():
+            df_with_indicators.ta.adx(length=params['adx_len'], append=True, col_names=(adx_col, f"DMP_{params['adx_len']}",f"DMN_{params['adx_len']}"))
+        if rsi_col not in df_with_indicators.columns or df_with_indicators[rsi_col].isnull().all():
+            df_with_indicators.ta.rsi(length=params['rsi_len'], append=True, col_names=(rsi_col,))
+        if sma_s_col not in df_with_indicators.columns or df_with_indicators[sma_s_col].isnull().all():
+            df_with_indicators[sma_s_col] = df_with_indicators['Close'].rolling(window=params['sma_short'], min_periods=params['sma_short']).mean()
+        if sma_l_col not in df_with_indicators.columns or df_with_indicators[sma_l_col].isnull().all():
+            df_with_indicators[sma_l_col] = df_with_indicators['Close'].rolling(window=params['sma_long'], min_periods=params['sma_long']).mean()
+    else:
+        logging.error("Pandas TA non disponible pour add_strategy_indicators."); return pd.DataFrame()
+    
+    # Pas besoin de dropna ici, on veut retourner toutes les données avec les indicateurs (même avec des NaN au début)
+    return df_with_indicators
+
+
+@app.route('/api/current_market_data_with_indicators')
+def get_current_market_data():
+    try:
+        # Récupérer les HISTORICAL_DATA_FETCH_LIMIT dernières bougies
+        df_klines = get_market_klines(limit=HISTORICAL_DATA_FETCH_LIMIT) 
+        if df_klines.empty or len(df_klines) < max(BEST_PARAMS['sma_long'], BEST_PARAMS['adx_len'], 200) : # Besoin d'assez pour les indicateurs de base
+            return jsonify({"error": "Pas assez de données klines récentes pour calculer les indicateurs."}), 500
+
+        df_with_indicators = add_strategy_indicators(df_klines, BEST_PARAMS)
+        
+        if df_with_indicators.empty:
+            return jsonify({"error": "Erreur lors du calcul des indicateurs sur les données récentes."}), 500
+            
+        # Récupérer les dernières N bougies (ex: 100) pour l'affichage après calcul des indicateurs
+        display_limit = 100 
+        df_display = df_with_indicators.iloc[-display_limit:] if len(df_with_indicators) > display_limit else df_with_indicators
+        
+        # Calculer le signal de régime pour la dernière bougie disponible
+        latest_signal = 0
+        if not df_display.empty:
+            # Pour calculer le signal de régime, on a besoin des signaux SMA et RSI
+            temp_sma_sig = generate_sma_crossover_signals(df_display.copy(), sma_short_len=BEST_PARAMS['sma_short'], sma_long_len=BEST_PARAMS['sma_long'])
+            temp_rsi_sig = generate_simple_rsi_signals(df_display.copy(), rsi_length=BEST_PARAMS['rsi_len'], 
+                                                       rsi_oversold=BEST_PARAMS['rsi_os'], 
+                                                       rsi_overbought_exit=BEST_PARAMS['rsi_ob_exit'])
+            
+            # Rejoindre les signaux au df_display principal.
+            df_display = df_display.join(temp_sma_sig[['signal_SmaCross']], how='left')
+            df_display = df_display.join(temp_rsi_sig[['signal_SimpleRsi']], how='left')
+            df_display.fillna({'signal_SmaCross': 0, 'signal_SimpleRsi': 0}, inplace=True)
+
+            adx_col = f"ADX_{BEST_PARAMS['adx_len']}"
+            if adx_col in df_display.columns and not df_display.empty:
+                latest_adx_val = df_display[adx_col].iloc[-1]
+                if latest_adx_val > BEST_PARAMS['adx_trend_th']:
+                    latest_signal = df_display['signal_SmaCross'].iloc[-1]
+                elif latest_adx_val < BEST_PARAMS['adx_range_th']:
+                    latest_signal = df_display['signal_SimpleRsi'].iloc[-1]
+        
+        chart_data = {
+            "dates": df_display.index.strftime('%Y-%m-%dT%H:%M:%SZ').tolist(),
+            "open": [x if pd.notnull(x) else None for x in df_display['Open'].tolist()],
+            "high": [x if pd.notnull(x) else None for x in df_display['High'].tolist()],
+            "low": [x if pd.notnull(x) else None for x in df_display['Low'].tolist()],
+            "close": [x if pd.notnull(x) else None for x in df_display['Close'].tolist()],
+            "volume": [x if pd.notnull(x) else None for x in df_display['Volume'].tolist()],
+            "sma_short": [x if pd.notnull(x) else None for x in df_display[f'SMA_{BEST_PARAMS["sma_short"]}'].tolist()],
+            "sma_long": [x if pd.notnull(x) else None for x in df_display[f'SMA_{BEST_PARAMS["sma_long"]}'].tolist()],
+            "sma_200": [x if pd.notnull(x) else None for x in df_display['SMA_200'].tolist()],
+            "adx": [x if pd.notnull(x) else None for x in df_display[f"ADX_{BEST_PARAMS['adx_len']}"].tolist()],
+            "rsi": [x if pd.notnull(x) else None for x in df_display[f"RSI_{BEST_PARAMS['rsi_len']}"].tolist()],
+            "latest_indicators": { # Valeurs de la dernière bougie
+                "price": df_display['Close'].iloc[-1] if not df_display.empty else None,
+                "adx": df_display[f"ADX_{BEST_PARAMS['adx_len']}"].iloc[-1] if not df_display.empty and f"ADX_{BEST_PARAMS['adx_len']}" in df_display else None,
+                "rsi": df_display[f"RSI_{BEST_PARAMS['rsi_len']}"].iloc[-1] if not df_display.empty and f"RSI_{BEST_PARAMS['rsi_len']}" in df_display else None,
+                "sma_short": df_display[f"SMA_{BEST_PARAMS['sma_short']}"].iloc[-1] if not df_display.empty and f"SMA_{BEST_PARAMS['sma_short']}" in df_display else None,
+                "sma_long": df_display[f"SMA_{BEST_PARAMS['sma_long']}"].iloc[-1] if not df_display.empty and f"SMA_{BEST_PARAMS['sma_long']}" in df_display else None,
+                "signal_sma_cross": int(df_display['signal_SmaCross'].iloc[-1]) if not df_display.empty and 'signal_SmaCross' in df_display else 0,
+                "signal_rsi": int(df_display['signal_SimpleRsi'].iloc[-1]) if not df_display.empty and 'signal_SimpleRsi' in df_display else 0,
+                "final_signal_regime": int(latest_signal)
+            }
+        }
+        return jsonify(chart_data)
+
+    except Exception as e:
+        logging.exception("Erreur dans /api/current_market_data_with_indicators")
+        return jsonify({"error": f"Erreur serveur: {str(e)}"}), 500
+
 
 if __name__ == '__main__':
     # Créer des fichiers vides avec en-tête si inexistants
