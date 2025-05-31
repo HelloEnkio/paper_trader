@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timezone, timedelta
 
 # --- Configuration des Chemins ---
-PERSISTENT_DATA_PATH = os.getenv("PERSISTENT_DATA_PATH", ".") 
+PERSISTENT_DATA_PATH = os.getenv("PERSISTENT_DATA_PATH", "/app/data") 
 STATE_FILE = os.path.join(PERSISTENT_DATA_PATH, "paper_bot_state.json")
 TRADES_LOG_FILE = os.path.join(PERSISTENT_DATA_PATH, "paper_bot_trades.csv")
 ACTIVITY_LOG_FILE = os.path.join(PERSISTENT_DATA_PATH, "paper_bot_activity.log")
