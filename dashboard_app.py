@@ -322,7 +322,7 @@ def add_strategy_indicators(df_market_data, params):
         df_with_indicators['SMA_200'] = df_with_indicators['Close'].rolling(window=200, min_periods=200).mean()
     
     adx_col = f"ADX_{params['adx_len']}"; rsi_col = f"RSI_{params['rsi_len']}"
-    sma_s_col = f"SMA_{params['sma_short']}"]; sma_l_col = f"SMA_{params['sma_long']}"
+    sma_s_col = f"SMA_{params['sma_short']}"; sma_l_col = f"SMA_{params['sma_long']}"
 
     if hasattr(df_with_indicators, 'ta'):
         # Calculer seulement si la colonne n'existe pas ou est pleine de NaN
