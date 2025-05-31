@@ -1,5 +1,5 @@
     # dashboard_app.py
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 import pandas as pd
 import pandas_ta as ta # Nécessaire pour recalculer les indicateurs
 import numpy as np
@@ -191,35 +191,49 @@ def dashboard_data():
 
 @app.route('/api/kline_data_for_trade')
 def get_kline_data_for_trade():
-    entry_time_str = request.args.get('entry_time_utc') # ex: 2025-05-30T04:00:00+00:00
-    if not entry_time_str:
-        return jsonify({"error": "Timestamp d'entrée du trade (entry_time_utc) manquant."}), 400
+    entry_time_utc_str_arg = request.args.get('entry_time_utc') # Récupérer l'argument
+    if not entry_time_utc_str_arg:
+        return jsonify({"error": "Paramètre 'entry_time_utc' manquant."}), 400
 
     try:
         # 1. Trouver le trade correspondant dans TRADES_LOG_FILE
-        df_all_trades = pd.read_csv(TRADES_LOG_FILE, delimiter=';', parse_dates=['EntryTimeUTC', 'ExitTimeUTC'])
-        # S'assurer que les dates sont UTC pour la comparaison
-        df_all_trades['EntryTimeUTC'] = pd.to_datetime(df_all_trades['EntryTimeUTC'], utc=True)
-        target_entry_time = pd.to_datetime(entry_time_str, utc=True)
+        if not os.path.exists(TRADES_LOG_FILE):
+            return jsonify({"error": f"Fichier log des trades '{TRADES_LOG_FILE}' non trouvé."}), 404
         
-        trade_info = df_all_trades[df_all_trades['EntryTimeUTC'] == target_entry_time]
-        if trade_info.empty:
-            return jsonify({"error": f"Trade avec entrée à {entry_time_str} non trouvé."}), 404
+        df_all_trades = pd.read_csv(TRADES_LOG_FILE, delimiter=';')
+        # Convertir les colonnes de date au format datetime UTC pour comparaison PRÉCISE
+        df_all_trades['EntryTimeUTC_dt'] = pd.to_datetime(df_all_trades['EntryTimeUTC'], errors='coerce', utc=True)
         
-        trade_info = trade_info.iloc[0].to_dict()
-        
-        # 2. Définir la période pour charger les klines (autour du trade)
-        # S'assurer que entry_time et exit_time sont bien des objets datetime
-        entry_dt = pd.to_datetime(trade_info['EntryTimeUTC'], utc=True)
-        exit_dt = pd.to_datetime(trade_info['ExitTimeUTC'], utc=True) if pd.notnull(trade_info.get('ExitTimeUTC')) else entry_dt + timedelta(hours=24) # Default window if no exit
+        # Le timestamp passé par JS sera probablement une string ISO. Convertir en datetime.
+        target_entry_time = pd.to_datetime(entry_time_utc_str_arg, errors='coerce', utc=True)
 
-        # Période pour afficher les klines: un peu avant l'entrée, un peu après la sortie
-        # Le nombre de bougies avant/après dépend de la plus longue période d'indicateur (ex: SMA50 ou ADX20)
-        lookback_candles = max(BEST_PARAMS['sma_long'], BEST_PARAMS['adx_len'], BEST_PARAMS['rsi_len'], 50) + 10
-        plot_start_dt = entry_dt - timedelta(hours=lookback_candles) 
-        plot_end_dt = exit_dt + timedelta(hours=20) 
+        if pd.isna(target_entry_time):
+            return jsonify({"error": "Format de 'entry_time_utc' invalide."}), 400
 
-        # 3. Charger les klines brutes depuis le fichier local
+        # Trouver le trade. Comparer les objets datetime.
+        trade_info_series = df_all_trades[df_all_trades['EntryTimeUTC_dt'] == target_entry_time]
+        
+        if trade_info_series.empty:
+            logging.warning(f"Trade avec entrée à {target_entry_time} non trouvé. Essayez avec le format exact du CSV.")
+            # Essayer de trouver en comparant les chaînes de caractères (moins robuste mais peut aider au débogage)
+            trade_info_series = df_all_trades[df_all_trades['EntryTimeUTC'] == entry_time_utc_str_arg]
+            if trade_info_series.empty:
+                 return jsonify({"error": f"Trade avec entrée à '{entry_time_utc_str_arg}' non trouvé après plusieurs tentatives."}), 404
+        
+        trade_info = trade_info_series.iloc[0].to_dict()
+        
+        # 2. Définir la période pour charger les klines
+        entry_dt = pd.to_datetime(trade_info['EntryTimeUTC'], utc=True) # Assurer que c'est un datetime
+        exit_dt_from_log = trade_info.get('ExitTimeUTC')
+        exit_dt = pd.to_datetime(exit_dt_from_log, utc=True) if pd.notnull(exit_dt_from_log) else entry_dt + timedelta(hours=48) # Fenêtre plus large si trade toujours ouvert
+
+        max_indicator_period = max(BEST_PARAMS['sma_long'], BEST_PARAMS['adx_len'], BEST_PARAMS['rsi_len'], 200) 
+        context_hours = max_indicator_period + 48 # Assez de contexte avant/après
+        
+        plot_start_dt = entry_dt - timedelta(hours=context_hours) 
+        plot_end_dt = exit_dt + timedelta(hours=24) 
+
+        # 3. Charger les klines brutes
         if not os.path.exists(LOCAL_KLINES_FILE):
             return jsonify({"error": f"Fichier klines local {LOCAL_KLINES_FILE} non trouvé."}), 404
         
@@ -232,45 +246,65 @@ def get_kline_data_for_trade():
             (df_klines_full.index <= plot_end_dt)
         ].copy()
 
-        if df_trade_period_klines.empty:
-            return jsonify({"error": "Aucune donnée kline trouvée pour la période du trade."}), 404
+        if df_trade_period_klines.empty or len(df_trade_period_klines) < max_indicator_period // 2 : # Seuil moins strict ici
+            logging.warning(f"Pas assez de données klines ({len(df_trade_period_klines)}) pour période du trade {entry_dt} avec indicateurs.")
+            # On peut quand même essayer de retourner les klines brutes si elles existent, même sans indicateurs complets
+            if df_trade_period_klines.empty: return jsonify({"error": "Aucune donnée kline trouvée pour la période du trade."}), 404
 
-        # 4. Recalculer les indicateurs pour cette période
+        # 4. Recalculer les indicateurs
         df_trade_period_klines[f'SMA_{BEST_PARAMS["sma_short"]}'] = df_trade_period_klines['Close'].rolling(window=BEST_PARAMS["sma_short"], min_periods=BEST_PARAMS["sma_short"]).mean()
         df_trade_period_klines[f'SMA_{BEST_PARAMS["sma_long"]}'] = df_trade_period_klines['Close'].rolling(window=BEST_PARAMS["sma_long"], min_periods=BEST_PARAMS["sma_long"]).mean()
+        df_trade_period_klines['SMA_200'] = df_trade_period_klines['Close'].rolling(window=200, min_periods=200).mean()
         adx_col = f"ADX_{BEST_PARAMS['adx_len']}"; rsi_col = f"RSI_{BEST_PARAMS['rsi_len']}"
         if hasattr(df_trade_period_klines, 'ta'):
             df_trade_period_klines.ta.adx(length=BEST_PARAMS['adx_len'], append=True, col_names=(adx_col, f"DMP_{BEST_PARAMS['adx_len']}",f"DMN_{BEST_PARAMS['adx_len']}"))
             df_trade_period_klines.ta.rsi(length=BEST_PARAMS['rsi_len'], append=True, col_names=(rsi_col,))
         
-        # Préparer les données pour Plotly.js (ou autre biblio de graphiques JS)
-        # Plotly attend des listes pour chaque trace (Open, High, Low, Close, dates)
+        # 5. Récupérer les valeurs des indicateurs au moment de l'entrée et de la sortie
+        conditions_at_entry = {}; conditions_at_exit = {}
+        entry_candle_data = df_trade_period_klines.loc[df_trade_period_klines.index.asof(entry_dt)] if entry_dt in df_trade_period_klines.index else None
+        if entry_candle_data is not None:
+            conditions_at_entry = {k: (entry_candle_data.get(k) if pd.notnull(entry_candle_data.get(k)) else None) for k in [adx_col, rsi_col, f'SMA_{BEST_PARAMS["sma_short"]}', f'SMA_{BEST_PARAMS["sma_long"]}', 'Close']}
+        
+        if pd.notnull(exit_dt) and exit_dt in df_trade_period_klines.index:
+            exit_candle_data = df_trade_period_klines.loc[df_trade_period_klines.index.asof(exit_dt)]
+            conditions_at_exit = {k: (exit_candle_data.get(k) if pd.notnull(exit_candle_data.get(k)) else None) for k in [adx_col, rsi_col, f'SMA_{BEST_PARAMS["sma_short"]}', f'SMA_{BEST_PARAMS["sma_long"]}', 'Close']}
+
         chart_data = {
-            "dates": df_trade_period_klines.index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
-            "open": df_trade_period_klines['Open'].tolist(),
-            "high": df_trade_period_klines['High'].tolist(),
-            "low": df_trade_period_klines['Low'].tolist(),
-            "close": df_trade_period_klines['Close'].tolist(),
-            "volume": df_trade_period_klines['Volume'].tolist(),
-            # Remplacer NaN par None pour la sérialisation JSON
+            "dates": df_trade_period_klines.index.strftime('%Y-%m-%dT%H:%M:%SZ').tolist(), # Format ISO pour JS
+            "open": [x if pd.notnull(x) else None for x in df_trade_period_klines['Open'].tolist()],
+            "high": [x if pd.notnull(x) else None for x in df_trade_period_klines['High'].tolist()],
+            "low": [x if pd.notnull(x) else None for x in df_trade_period_klines['Low'].tolist()],
+            "close": [x if pd.notnull(x) else None for x in df_trade_period_klines['Close'].tolist()],
+            "volume": [x if pd.notnull(x) else None for x in df_trade_period_klines['Volume'].tolist()],
             "sma_short": [x if pd.notnull(x) else None for x in df_trade_period_klines[f'SMA_{BEST_PARAMS["sma_short"]}'].tolist()],
             "sma_long": [x if pd.notnull(x) else None for x in df_trade_period_klines[f'SMA_{BEST_PARAMS["sma_long"]}'].tolist()],
+            "sma_200": [x if pd.notnull(x) else None for x in df_trade_period_klines['SMA_200'].tolist()],
             "adx": [x if pd.notnull(x) else None for x in df_trade_period_klines[adx_col].tolist()],
             "rsi": [x if pd.notnull(x) else None for x in df_trade_period_klines[rsi_col].tolist()],
-            "trade_info": { # Ajouter les infos du trade pour les marqueurs
+            "trade_info": {
                 "entry_price": trade_info.get('EntryPrice'),
-                "entry_time": pd.to_datetime(trade_info.get('EntryTimeUTC')).strftime('%Y-%m-%d %H:%M:%S'),
+                "entry_time_utc": entry_dt.isoformat(),
                 "exit_price": trade_info.get('ExitPrice'),
-                "exit_time": pd.to_datetime(trade_info.get('ExitTimeUTC')).strftime('%Y-%m-%d %H:%M:%S'),
-                "sl_price": BEST_PARAMS['sl'] * trade_info.get('EntryPrice') if trade_info.get('EntryPrice') else None, # Recalculer pour affichage
-                "tp_price": BEST_PARAMS['tp'] * trade_info.get('EntryPrice') if trade_info.get('EntryPrice') else None, # Recalculer pour affichage
-            }
+                "exit_time_utc": exit_dt.isoformat() if pd.notnull(exit_dt) else None,
+                "sl_price": float(trade_info.get('EntryPrice')) * (1 - BEST_PARAMS['sl']) if pd.notnull(trade_info.get('EntryPrice')) else None,
+                "tp_price": float(trade_info.get('EntryPrice')) * (1 + BEST_PARAMS['tp']) if pd.notnull(trade_info.get('EntryPrice')) else None,
+                "exit_reason": trade_info.get('ExitReason')
+            },
+            "conditions_at_entry": conditions_at_entry,
+            "conditions_at_exit": conditions_at_exit
         }
         return jsonify(chart_data)
 
+    except FileNotFoundError as e:
+        logging.error(f"Fichier non trouvé dans /api/kline_data_for_trade: {e}")
+        return jsonify({"error": f"Fichier de données non trouvé sur le serveur: {e.filename}"}), 500
+    except KeyError as e:
+        logging.error(f"Clé manquante lors de l'accès aux données du trade ou klines: {e}")
+        return jsonify({"error": f"Données de trade ou klines incomplètes. Clé manquante: {e}"}), 500
     except Exception as e:
-        logging.exception("Erreur dans /api/kline_data_for_trade")
-        return jsonify({"error": f"Erreur serveur: {str(e)}"}), 500
+        logging.exception("Erreur dans /api/kline_data_for_trade") # Log traceback complet côté serveur
+        return jsonify({"error": f"Erreur serveur inattendue: {str(e)}"}), 500
 
 
 if __name__ == '__main__':
