@@ -1,6 +1,6 @@
 pandas
 pandas-ta
-numpy
+numpy==1.26.4
 requests
 schedule
 python-dotenv
