@@ -1,4 +1,4 @@
-# dashboard_app.py
+    # dashboard_app.py
 from flask import Flask, jsonify, render_template
 import pandas as pd
 import pandas_ta as ta # Nécessaire pour recalculer les indicateurs
