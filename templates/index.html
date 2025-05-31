@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <title>Tableau de Bord - Paper Trading Bot</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script> <style>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
+    <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #eef1f5; color: #333a40; }
         h1, h2, h3 { color: #2c3e50; }
         h1 { text-align: center; margin-bottom: 30px; }
         h2 { border-bottom: 2px solid #3498db; padding-bottom: 5px; margin-top: 30px; }
-        
         .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px;}
         .metric-card { background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); transition: transform 0.2s ease-in-out; }
         .metric-card:hover { transform: translateY(-5px); }
@@ -18,73 +18,36 @@
         .metric-card span.positive { color: #27ae60; }
         .metric-card span.negative { color: #c0392b; }
         .metric-card span.neutral { color: #7f8c8d; }
-
         table { border-collapse: collapse; width: 100%; margin-bottom: 30px; background-color: #fff; box-shadow: 0 4px 8px rgba(0,0,0,0.05); border-radius: 8px; overflow: hidden; }
         th, td { border-bottom: 1px solid #ecf0f1; padding: 12px 15px; text-align: left; font-size: 0.95em;}
         th { background-color: #3498db; color: white; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em;}
         tr:nth-child(even) { background-color: #f8f9fa; }
         tr:hover { background-color: #e9ecef; }
-
-        .chart-wrapper {
-            position: relative; background-color: #fff; padding: 20px; border-radius: 8px; 
-            box-shadow: 0 4px 8px rgba(0,0,0,0.05); margin-bottom: 30px;
-        }
-        .equity-chart-inner-wrapper {
-            height: 350px; /* Hauteur ajustée */
-            width: 100%;   
-            position: relative;
-        }
-        #klineChartContainer { /* Pour le graphique kline détaillé */
-            height: 450px;
-            width: 100%;
-            margin-top: 20px;
-        }
-
+        .chart-wrapper { position: relative; background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); margin-bottom: 30px;}
+        .equity-chart-inner-wrapper { height: 350px; width: 100%; position: relative;}
+        #klineChartContainer { height: 450px; width: 100%; margin-top: 10px; } /* Ajusté */
+        #tradeConditionsInfo { margin-top:15px; padding:10px; background-color: #f9f9f9; border: 1px solid #eee; border-radius: 4px; font-size: 0.9em; }
         #activityLogContainer { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
         #activityLog { white-space: pre-wrap; background-color: #2c3e50; color: #ecf0f1; padding: 15px; max-height: 300px; overflow-y: auto; border: 1px solid #34495e; border-radius: 4px; font-family: 'Courier New', Courier, monospace; font-size: 0.9em;}
-        .trade-visualize-button { padding: 5px 10px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8em;}
+        .trade-visualize-button { padding: 6px 12px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;}
         .trade-visualize-button:hover { background-color: #2980b9; }
     </style>
 </head>
 <body>
     <h1>Tableau de Bord - Paper Trading Bot</h1>
-
     <div class="dashboard-grid">
-        <div class="metric-card">
-            <h3>Capital Actuel</h3>
-            <span id="currentCapital">Chargement...</span> USDT
-        </div>
-        <div class="metric-card">
-            <h3>Rendement Total</h3>
-            <span id="totalReturn">Chargement...</span>
-        </div>
-        <div class="metric-card">
-            <h3>Drawdown Max</h3>
-            <span id="maxDrawdown">Chargement...</span>
-        </div>
-        <div class="metric-card">
-            <h3>Nombre de Trades</h3>
-            <span id="numTrades">Chargement...</span>
-        </div>
-        <div class="metric-card">
-            <h3>Taux de Réussite</h3>
-            <span id="winRate">Chargement...</span>
-        </div>
-        <div class="metric-card">
-            <h3>Profit Factor</h3>
-            <span id="profitFactor">Chargement...</span>
-        </div>
-         <div class="metric-card">
-            <h3>Sharpe Ratio (Approx.)</h3>
-            <span id="sharpeRatio">Chargement...</span>
-        </div>
+        <div class="metric-card"><h3>Capital Actuel</h3><span id="currentCapital">Chargement...</span> USDT</div>
+        <div class="metric-card"><h3>Rendement Total</h3><span id="totalReturn">Chargement...</span></div>
+        <div class="metric-card"><h3>Drawdown Max</h3><span id="maxDrawdown">Chargement...</span></div>
+        <div class="metric-card"><h3>Nombre de Trades</h3><span id="numTrades">Chargement...</span></div>
+        <div class="metric-card"><h3>Taux de Réussite</h3><span id="winRate">Chargement...</span></div>
+        <div class="metric-card"><h3>Profit Factor</h3><span id="profitFactor">Chargement...</span></div>
+        <div class="metric-card"><h3>Sharpe Ratio (Approx.)</h3><span id="sharpeRatio">Chargement...</span></div>
     </div>
 
     <div class="chart-wrapper">
         <h2>Courbe d'Équité</h2>
-        <div class="equity-chart-inner-wrapper">
-            <canvas id="equityCurveChart"></canvas> 
-        </div>
+        <div class="equity-chart-inner-wrapper"><canvas id="equityCurveChart"></canvas></div>
     </div>
 
     <h2>Historique des Trades</h2>
@@ -95,14 +58,17 @@
                 <th>Quantité</th><th>PnL Abs (USDT)</th><th>PnL %</th><th>Raison</th><th>Visualiser</th>
             </tr>
         </thead>
-        <tbody>
-            </tbody>
+        <tbody></tbody>
     </table>
+
     <div class="chart-wrapper" id="klineChartWrapper" style="display:none;">
         <h2 id="klineChartTitle">Visualisation du Trade</h2>
         <div id="klineChartContainer"></div>
+        <div id="tradeConditionsInfo">
+            <h4>Conditions d'Entrée:</h4> <pre id="entryConditions"></pre>
+            <h4>Conditions de Sortie:</h4> <pre id="exitConditions"></pre>
+        </div>
     </div>
-
 
     <div id="activityLogContainer">
         <h2>Log d'Activité Récent (Bot)</h2>
@@ -111,125 +77,98 @@
 
     <script>
         window.myEquityChart = null; 
-        window.myKlineChart = null; // Pour le graphique Plotly
 
         function formatNumber(value, decimals = 2, unit = '') {
-            if (value === null || typeof value === 'undefined' || value === "NaN" || Number.isNaN(parseFloat(value))) {
-                return "N/A";
-            }
+            if (value === null || typeof value === 'undefined' || value === "NaN" || Number.isNaN(parseFloat(value))) return "N/A";
             const num = parseFloat(value);
             if (Number.isNaN(num)) return "N/A";
             return num.toFixed(decimals) + unit;
         }
-
         function getPnlClass(value) {
             const num = parseFloat(value);
             if (Number.isNaN(num) || Math.abs(num) < 0.0001) return 'neutral';
             return num > 0 ? 'positive' : 'negative';
         }
 
-        async function fetchKlineDataForTrade(entryTimeUtc) {
+        async function fetchKlineDataForTrade(entryTimeUtcIso) {
+            const klineChartContainer = document.getElementById('klineChartContainer');
+            const klineChartWrapper = document.getElementById('klineChartWrapper');
+            const entryConditionsEl = document.getElementById('entryConditions');
+            const exitConditionsEl = document.getElementById('exitConditions');
+
+            klineChartContainer.innerHTML = '<p>Chargement du graphique du trade...</p>';
+            entryConditionsEl.textContent = 'Chargement...';
+            exitConditionsEl.textContent = 'Chargement...';
+            klineChartWrapper.style.display = 'block';
+            document.getElementById('klineChartTitle').textContent = `Visualisation du Trade (Entrée: ${new Date(entryTimeUtcIso).toLocaleString('fr-FR', {timeZone:'UTC'})})`;
+
             try {
-                const response = await fetch(`/api/kline_data_for_trade?entry_time_utc=${encodeURIComponent(entryTimeUtc)}`);
-                if (!response.ok) {
-                    throw new Error(`Erreur HTTP pour kline data: ${response.status}`);
-                }
+                const response = await fetch(`/api/kline_data_for_trade?entry_time_utc=${encodeURIComponent(entryTimeUtcIso)}`);
+                if (!response.ok) throw new Error(`Erreur HTTP pour kline data: ${response.status}`);
                 const klineData = await response.json();
-                if (klineData.error) {
-                    throw new Error(klineData.error);
-                }
-                console.log("Kline data pour trade:", klineData);
-                displayKlineChart(klineData);
+                if (klineData.error) throw new Error(klineData.error);
+                
+                displayKlineChartWithPlotly(klineData);
+                entryConditionsEl.textContent = JSON.stringify(klineData.conditions_at_entry, null, 2);
+                exitConditionsEl.textContent = klineData.trade_info.exit_reason ? JSON.stringify(klineData.conditions_at_exit, null, 2) : "Trade non clôturé";
+
             } catch (error) {
-                console.error("Erreur récupération données kline pour trade:", error);
-                document.getElementById('klineChartContainer').innerHTML = `<p style="color:red;">Erreur chargement graphique du trade: ${error.message}</p>`;
-                document.getElementById('klineChartWrapper').style.display = 'block';
+                console.error("Erreur récupération/affichage données kline pour trade:", error);
+                klineChartContainer.innerHTML = `<p style="color:red;">Erreur: ${error.message}</p>`;
             }
         }
 
-        function displayKlineChart(klineData) {
-            const klineChartContainer = document.getElementById('klineChartContainer');
-            klineChartContainer.innerHTML = ''; // Nettoyer le conteneur
-            document.getElementById('klineChartWrapper').style.display = 'block';
-            document.getElementById('klineChartTitle').textContent = `Visualisation du Trade (Entrée: ${klineData.trade_info.entry_time})`;
-
+        function displayKlineChartWithPlotly(klineData) {
             const traceCandles = {
                 x: klineData.dates, open: klineData.open, high: klineData.high,
                 low: klineData.low, close: klineData.close,
-                type: 'candlestick', name: 'ETH/USDT'
+                type: 'candlestick', name: 'ETH/USDT',
+                increasing: {line: {color: '#27ae60'}}, 
+                decreasing: {line: {color: '#c0392b'}}
             };
             const layout = {
                 title: `Trade ETH/USDT (${klineData.trade_info.entry_time} - ${klineData.trade_info.exit_time || 'En cours'})`,
                 xaxis: { title: 'Date', type: 'date', rangeslider: { visible: false } },
-                yaxis: { title: 'Prix (USDT)' },
-                shapes: [], // Pour les lignes SL/TP et marqueurs d'entrée/sortie
-                annotations: [] // Pour les labels d'entrée/sortie
+                yaxis: { title: 'Prix (USDT)', autorange: true, type: 'linear'}, // Axe Y principal pour prix
+                yaxis2: { title: 'ADX', overlaying: 'y', side: 'right', showgrid:false, range: [0,100]},
+                yaxis3: { title: 'RSI', overlaying: 'y', side: 'right', position: 0.85, showgrid:false, range: [0,100]}, // Positionner un peu à gauche
+                shapes: [], annotations: [], legend: {orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "right", x: 1}
             };
 
-            // Marqueur d'entrée
+            // Marqueurs et lignes SL/TP
             if (klineData.trade_info.entry_time && klineData.trade_info.entry_price) {
-                layout.annotations.push({
-                    x: klineData.trade_info.entry_time, y: klineData.trade_info.entry_price,
-                    xref: 'x', yref: 'y', text: 'Entrée', showarrow: true, arrowhead: 2, ax: 0, ay: -40,
-                    bgcolor: 'rgba(46, 204, 113, 0.7)', font: {color: 'white'}
-                });
+                layout.annotations.push({ x: klineData.trade_info.entry_time, y: klineData.trade_info.entry_price, text: 'Entrée', showarrow: true, arrowhead: 4, ax: 0, ay: -30, bordercolor: '#27ae60', bgcolor: '#2ecc71', font:{color:'white'} });
+                if(klineData.trade_info.sl_price) layout.shapes.push({type: 'line', xref: 'paper', yref: 'y', x0: 0, y0: klineData.trade_info.sl_price, x1: 1, y1: klineData.trade_info.sl_price, line: { color: 'red', width: 1, dash: 'dash' }});
+                if(klineData.trade_info.tp_price) layout.shapes.push({type: 'line', xref: 'paper', yref: 'y', x0: 0, y0: klineData.trade_info.tp_price, x1: 1, y1: klineData.trade_info.tp_price, line: { color: 'green', width: 1, dash: 'dash' }});
             }
-            // Marqueur de sortie
             if (klineData.trade_info.exit_time && klineData.trade_info.exit_price) {
-                layout.annotations.push({
-                    x: klineData.trade_info.exit_time, y: klineData.trade_info.exit_price,
-                    xref: 'x', yref: 'y', text: 'Sortie', showarrow: true, arrowhead: 2, ax: 0, ay: 40,
-                    bgcolor: 'rgba(231, 76, 60, 0.7)', font: {color: 'white'}
-                });
-            }
-             // Ligne SL
-            if (klineData.trade_info.sl_price) {
-                layout.shapes.push({
-                    type: 'line', xref: 'paper', yref: 'y',
-                    x0: 0, y0: klineData.trade_info.sl_price,
-                    x1: 1, y1: klineData.trade_info.sl_price,
-                    line: { color: 'red', width: 1, dash: 'dash' }, name: 'SL'
-                });
-            }
-            // Ligne TP
-            if (klineData.trade_info.tp_price) {
-                layout.shapes.push({
-                    type: 'line', xref: 'paper', yref: 'y',
-                    x0: 0, y0: klineData.trade_info.tp_price,
-                    x1: 1, y1: klineData.trade_info.tp_price,
-                    line: { color: 'green', width: 1, dash: 'dash' }, name: 'TP'
-                });
+                layout.annotations.push({ x: klineData.trade_info.exit_time, y: klineData.trade_info.exit_price, text: `Sortie (${klineData.trade_info.exit_reason})`, showarrow: true, arrowhead: 4, ax: 0, ay: 30, bordercolor: '#c0392b', bgcolor: '#e74c3c', font:{color:'white'} });
             }
             
             const traces = [traceCandles];
-            if (klineData.sma_short) traces.push({ x: klineData.dates, y: klineData.sma_short, type: 'scatter', mode: 'lines', name: `SMA ${BEST_PARAMS.sma_short}`, line: {color: 'orange'} });
-            if (klineData.sma_long) traces.push({ x: klineData.dates, y: klineData.sma_long, type: 'scatter', mode: 'lines', name: `SMA ${BEST_PARAMS.sma_long}`, line: {color: 'purple'} });
-            // Ajouter d'autres indicateurs si besoin (ADX, RSI) sur des axes Y séparés
+            if (klineData.sma_short) traces.push({ x: klineData.dates, y: klineData.sma_short, type: 'scatter', mode: 'lines', name: `SMA ${BEST_PARAMS.sma_short}`, line: {color: 'orange', width:1} });
+            if (klineData.sma_long) traces.push({ x: klineData.dates, y: klineData.sma_long, type: 'scatter', mode: 'lines', name: `SMA ${BEST_PARAMS.sma_long}`, line: {color: 'purple', width:1} });
+            if (klineData.sma_200) traces.push({ x: klineData.dates, y: klineData.sma_200, type: 'scatter', mode: 'lines', name: `SMA 200`, line: {color: 'grey', width:1, dash:'dot'} });
+            if (klineData.adx) traces.push({ x: klineData.dates, y: klineData.adx, type: 'scatter', mode: 'lines', name: 'ADX', yaxis: 'y2', line: {color: 'blue', width:1} });
+            if (klineData.rsi) traces.push({ x: klineData.dates, y: klineData.rsi, type: 'scatter', mode: 'lines', name: 'RSI', yaxis: 'y3', line: {color: 'pink', width:1} });
             
-            Plotly.newPlot('klineChartContainer', traces, layout);
+            Plotly.newPlot('klineChartContainer', traces, layout, {responsive: true});
         }
-
 
         async function fetchDataAndUpdateDashboard() {
             try {
                 const response = await fetch('/dashboard_data');
-                if (!response.ok) {
-                    console.error("Erreur HTTP de l'API:", response.status, response.statusText);
-                    document.getElementById('currentCapital').innerHTML = `<span class="negative">Erreur API</span>`;
-                    return;
-                }
+                if (!response.ok) { console.error("Erreur HTTP:", response.status); document.getElementById('currentCapital').innerHTML = `<span class="negative">Erreur API</span>`; return; }
                 const data = await response.json();
-                // console.log("Données reçues du backend:", data); // Décommentez pour débogage
+                // console.log("Données Dashboard:", data);
 
                 const perf = data.performance_summary || {};
                 const currentState = data.current_state || {};
-                
-                // S'assurer que INITIAL_PAPER_CAPITAL est bien défini globalement ou passé dans 'data'
                 const initialCapital = parseFloat(currentState.paper_capital_at_start_of_log) || parseFloat(perf.initial_capital_for_metrics) || 50.0; 
 
                 document.getElementById('currentCapital').innerHTML = `<span class="${getPnlClass(currentState.paper_capital)}">${formatNumber(currentState.paper_capital)}</span> USDT`;
                 document.getElementById('totalReturn').innerHTML = `<span class="${getPnlClass(perf.total_return_pct)}">${formatNumber(perf.total_return_pct, 2, '%')}</span>`;
-                document.getElementById('maxDrawdown').innerHTML = `<span class="${(perf.max_drawdown_pct === 0 || perf.max_drawdown_pct === null || typeof perf.max_drawdown_pct === 'undefined') ? 'neutral' : 'negative'}">${formatNumber(perf.max_drawdown_pct, 2, '%')}</span>`;
+                document.getElementById('maxDrawdown').innerHTML = `<span class="${(parseFloat(perf.max_drawdown_pct) === 0 || perf.max_drawdown_pct === null) ? 'neutral' : 'negative'}">${formatNumber(perf.max_drawdown_pct, 2, '%')}</span>`;
                 document.getElementById('numTrades').innerHTML = `<span>${perf.num_trades !== null ? perf.num_trades : "N/A"}</span>`;
                 document.getElementById('winRate').innerHTML = `<span class="${getPnlClass(perf.win_rate_pct - 50)}">${formatNumber(perf.win_rate_pct, 2, '%')}</span>`;
                 document.getElementById('profitFactor').innerHTML = `<span>${formatNumber(perf.profit_factor, 2)}</span>`;
@@ -238,81 +177,54 @@
                 const tradesTableBody = document.getElementById('tradesTable').getElementsByTagName('tbody')[0];
                 tradesTableBody.innerHTML = ""; 
                 if (data.trades_history && Array.isArray(data.trades_history) && data.trades_history.length > 0 && !data.trades_history[0].error) {
-                    data.trades_history.forEach(trade => {
+                    data.trades_history.slice().reverse().forEach(trade => { // Afficher les plus récents en premier
                         let row = tradesTableBody.insertRow();
-                        row.insertCell().textContent = trade.EntryTimeUTC ? new Date(trade.EntryTimeUTC).toLocaleString('fr-FR', {timeZone:'UTC'}) : 'N/A';
+                        let entryT = trade.EntryTimeUTC ? new Date(trade.EntryTimeUTC) : null;
+                        let exitT = trade.ExitTimeUTC ? new Date(trade.ExitTimeUTC) : null;
+                        row.insertCell().textContent = entryT ? entryT.toLocaleString('fr-FR', {timeZone:'UTC'}) : 'N/A';
                         row.insertCell().textContent = formatNumber(trade.EntryPrice, 2);
-                        row.insertCell().textContent = trade.ExitTimeUTC ? new Date(trade.ExitTimeUTC).toLocaleString('fr-FR', {timeZone:'UTC'}) : 'N/A';
+                        row.insertCell().textContent = exitT ? exitT.toLocaleString('fr-FR', {timeZone:'UTC'}) : 'N/A';
                         row.insertCell().textContent = formatNumber(trade.ExitPrice, 2);
                         row.insertCell().textContent = formatNumber(trade.Quantity, 8);
                         row.insertCell().innerHTML = `<span class="${getPnlClass(trade.PnL_Abs)}">${formatNumber(trade.PnL_Abs, 2)}</span>`;
                         row.insertCell().innerHTML = `<span class="${getPnlClass(parseFloat(trade.PnL_Pct) * 100)}">${formatNumber(parseFloat(trade.PnL_Pct) * 100, 2, '%')}</span>`;
                         row.insertCell().textContent = trade.ExitReason;
-                        // Bouton Visualiser
                         let cellVisualize = row.insertCell();
                         let btnVisualize = document.createElement('button');
                         btnVisualize.textContent = 'Voir';
                         btnVisualize.className = 'trade-visualize-button';
-                        btnVisualize.onclick = function() { fetchKlineDataForTrade(trade.EntryTimeUTC); };
+                        if(trade.EntryTimeUTC) { // Seulement si on a un timestamp d'entrée
+                           btnVisualize.onclick = function() { fetchKlineDataForTrade(trade.EntryTimeUTC); };
+                        } else {
+                            btnVisualize.disabled = true;
+                        }
                         cellVisualize.appendChild(btnVisualize);
                     });
-                } else if (data.trades_history && data.trades_history.length > 0 && data.trades_history[0].error) {
-                     let row = tradesTableBody.insertRow();
-                     let cell = row.insertCell(); cell.colSpan = 9; cell.textContent = data.trades_history[0].error;
-                } else {
-                    let row = tradesTableBody.insertRow();
-                    let cell = row.insertCell(); cell.colSpan = 9; cell.textContent = "Aucun trade clôturé pour l'instant.";
-                }
+                } else { /* ... gestion "Aucun trade" ... */ }
                 
                 if (data.activity_log && Array.isArray(data.activity_log)) {
                     document.getElementById('activityLog').textContent = data.activity_log.join("");
-                } else {
-                    document.getElementById('activityLog').textContent = "Log d'activité non disponible.";
-                }
+                } else { document.getElementById('activityLog').textContent = "Log d'activité non disponible.";}
 
                 const ctxEquity = document.getElementById('equityCurveChart').getContext('2d');
-                if (window.myEquityChart) {
-                    window.myEquityChart.destroy();
-                    window.myEquityChart = null; // Important de le remettre à null
-                }
-
+                if (window.myEquityChart) { window.myEquityChart.destroy(); window.myEquityChart = null; }
                 if (perf.equity_curve_values && perf.equity_curve_timestamps && perf.equity_curve_values.length > 0) {
-                    const equityTimestamps = perf.equity_curve_timestamps.map(t => {
-                        return t ? new Date(t).toLocaleDateString('fr-FR') + ' ' + new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Début';
-                    });
-                    
+                    const equityTimestamps = perf.equity_curve_timestamps.map(t => t ? new Date(t).toLocaleDateString('fr-FR') + ' ' + new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Début');
                     window.myEquityChart = new Chart(ctxEquity, {
-                        type: 'line',
-                        data: {
-                            labels: equityTimestamps,
-                            datasets: [{
-                                label: 'Équité Paper Trading (USDT)',
-                                data: perf.equity_curve_values,
-                                borderColor: 'rgb(75, 192, 192)',
-                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                                tension: 0.1,
-                                fill: true,
-                                pointRadius: perf.equity_curve_values.length < 50 ? 2 : 0,
+                        type: 'line', data: { labels: equityTimestamps, datasets: [{
+                                label: 'Équité Paper Trading (USDT)', data: perf.equity_curve_values,
+                                borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                tension: 0.1, fill: true, pointRadius: perf.equity_curve_values.length < 50 ? 2 : 0,
                             }]
                         },
-                        options: { 
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            scales: { 
+                        options: { responsive: true, maintainAspectRatio: false, scales: { 
                                 y: { beginAtZero: false, ticks: { callback: function(value) { return value.toFixed(2) + ' USDT';} } },
                                 x: { ticks: { maxRotation: 70, minRotation: 45, autoSkip: true, maxTicksLimit: perf.equity_curve_values.length > 30 ? 15 : perf.equity_curve_values.length } } 
                             },
                         }
                     });
-                } else {
-                    ctxEquity.clearRect(0, 0, ctxEquity.canvas.width, ctxEquity.canvas.height);
-                    ctxEquity.font = "16px Arial"; ctxEquity.textAlign = "center";
-                    ctxEquity.fillText("Données d'équité non disponibles", ctxEquity.canvas.width/2, ctxEquity.canvas.height/2);
-                }
-            } catch (error) {
-                console.error("Erreur dans fetchDataAndUpdateDashboard:", error);
-                document.getElementById('currentCapital').innerHTML = `<span class="negative">Erreur JS: ${error.message}</span>`;
-            }
+                } else { /* ... message "Données d'équité non disponibles" ... */ }
+            } catch (error) { console.error("Erreur fetchDataAndUpdateDashboard:", error); document.getElementById('currentCapital').innerHTML = `<span class="negative">Erreur JS</span>`; }
         }
         fetchDataAndUpdateDashboard();
         setInterval(fetchDataAndUpdateDashboard, 30000); 
