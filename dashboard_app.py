@@ -134,9 +134,8 @@ def calculate_performance_metrics(df_trades, initial_capital):
     }
 
 @app.route('/')
-def index_page(): # Renommé pour éviter conflit avec index
-    # Plus tard, on servira une page HTML avec render_template("index.html")
-    return "<h1>Tableau de Bord Paper Trading Bot (en construction)</h1> <p><a href='/dashboard_data'>Voir les données JSON du dashboard</a></p>"
+def index_page():
+    return render_template("index.html") 
 
 @app.route('/dashboard_data') # Endpoint unique pour toutes les données du dashboard
 def dashboard_data():
