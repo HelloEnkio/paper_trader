@@ -26,6 +26,10 @@ SYMBOL_FOR_KLINES = "ETH-USDT" # Doit correspondre à celui du paper_trader
 TIMEFRAME_FOR_KLINES = '1hour' # Doit correspondre à celui du paper_trader
 LOCAL_KLINES_FILE = os.path.join(KLINES_BASE_DIR, f"local_klines_{SYMBOL_FOR_KLINES.replace('-', '_')}_{TIMEFRAME_FOR_KLINES}.csv")
 HISTORICAL_DATA_FETCH_LIMIT = 350 # Utilisé par get_market_klines
+TIMEFRAME_TO_MINUTES = {
+    '1min': 1, '3min': 3, '5min': 5, '15min': 15, '30min': 30, 
+    '1hour': 60, '2hour': 120 # Ajoutez d'autres si nécessaire pour KuCoin
+}
 
 
 # Paramètres de la stratégie (BEST_PARAMS de votre paper_trader.py)
