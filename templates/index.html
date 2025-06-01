@@ -133,15 +133,14 @@
         </div>
     </div>
 
-    <script>
+<script>
         window.myEquityChart = null; 
-        // Les IDs des conteneurs Plotly sont passés directement aux fonctions
-        // BEST_PARAMS_JS sera peuplé par l'appel API ou défini avec des valeurs par défaut
-        let BEST_PARAMS_JS = { 
-            'adx_len': 20, 'adx_trend_th': 28, 'adx_range_th': 22, 'sma_short': 30, 
-            'sma_long': 50, 'rsi_len': 10, 'rsi_os': 35, 'rsi_ob_exit': 65,
+        let BEST_PARAMS_JS = { // Valeurs par défaut, seront écrasées si fournies par le backend
+            'adx_len': 20, 'adx_trend_th': 28, 'adx_range_th': 22, 
+            'sma_short': 30, 'sma_long': 50, 
+            'rsi_len': 10, 'rsi_os': 35, 'rsi_ob_exit': 65,
             'sl': 0.02, 'tp': 0.088 
-        }; // Valeurs par défaut au cas où
+        };
 
         function formatNumber(value, decimals = 2, unit = '') {
             if (value === null || typeof value === 'undefined' || value === "NaN" || Number.isNaN(parseFloat(value))) return "N/A";
@@ -169,46 +168,63 @@
 
             try {
                 const response = await fetch(`/api/kline_data_for_trade?entry_time_utc=${encodeURIComponent(entryTimeUtcIso)}`);
-                if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
+                if (!response.ok) throw new Error(`Erreur HTTP pour kline data: ${response.status}`);
                 const klineData = await response.json();
                 if (klineData.error) throw new Error(klineData.error);
                 
-                displayKlineChartWithPlotly(klineData, 'klineChartContainer'); 
-                entryConditionsEl.textContent = klineData.conditions_at_entry ? JSON.stringify(klineData.conditions_at_entry, null, 2) : "Non disponible";
-                exitConditionsEl.textContent = klineData.conditions_at_exit && klineData.trade_info.exit_reason ? JSON.stringify(klineData.conditions_at_exit, null, 2) : "Trade non clôturé ou conditions non disponibles";
+                // Utiliser les params de la stratégie si le backend les a inclus pour ce trade
+                const paramsForChart = klineData.params_used_for_indicators || BEST_PARAMS_JS;
+                displayKlineChartWithPlotly(klineData, 'klineChartContainer', paramsForChart, true); // true pour indiquer que c'est un trade détaillé
+                
+                entryConditionsEl.textContent = klineData.conditions_at_entry ? JSON.stringify(klineData.conditions_at_entry, Object.keys(klineData.conditions_at_entry).sort(), 2) : "Non disponible";
+                exitConditionsEl.textContent = klineData.conditions_at_exit && klineData.trade_info.exit_reason ? JSON.stringify(klineData.conditions_at_exit, Object.keys(klineData.conditions_at_exit).sort(), 2) : "Trade non clôturé ou conditions non disponibles";
+
             } catch (error) {
                 console.error("Erreur fetchKlineDataForTrade:", error);
-                klineChartContainer.innerHTML = `<p style="color:red;">Erreur chargement graphique: ${error.message}</p>`;
+                klineChartContainer.innerHTML = `<p style="color:red;">Erreur: ${error.message}</p>`;
             }
         }
 
-        function displayKlineChartWithPlotly(chartData, containerId) {
+        function displayKlineChartWithPlotly(chartData, containerId, strategyParams, isTradeDetailChart = false) {
+            const klineChartContainer = document.getElementById(containerId);
+            klineChartContainer.innerHTML = ''; // Nettoyer le conteneur
+
             const layout = {
                 dragmode: 'zoom', hovermode: 'x unified',
                 legend: {orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "right", x: 1},
-                margin: { l: 60, r: 120, b: 80, t: 60, pad:4 }, // Ajuster marges pour axes multiples
+                margin: { l: 60, r: 120, b: 50, t: 60, pad:4 }, // Ajusté pour plus d'espace à droite pour les axes Y
+
                 xaxis: { title: 'Date', type: 'date', rangeslider: { visible: false }, domain: [0, 1] },
-                yaxis: { title: 'Prix (USDT)', autorange: true, type: 'linear', domain: [0.40, 1] },
-                yaxis2: { title: 'ADX', titlefont: {color: '#1f77b4'}, tickfont: {color: '#1f77b4'}, anchor: 'free', overlaying: 'y', side: 'right', position: 1, domain: [0.20, 0.35], showgrid:false, range:[0,100] },
-                yaxis3: { title: 'RSI', titlefont: {color: '#9467bd'}, tickfont: {color: '#9467bd'}, anchor: 'free', overlaying: 'y', side: 'right', position: 1, domain: [0, 0.15], showgrid:false, range:[0,100],
-                    shapes: [
-                        {type: 'line', xref: 'paper', x0:0, x1:1, y0:BEST_PARAMS_JS.rsi_os, y1:BEST_PARAMS_JS.rsi_os, line:{color:'grey', width:1, dash:'dot'}, layer:'below'},
-                        {type: 'line', xref: 'paper', x0:0, x1:1, y0:BEST_PARAMS_JS.rsi_ob_exit, y1:BEST_PARAMS_JS.rsi_ob_exit, line:{color:'grey', width:1, dash:'dot'}, layer:'below'},
+                
+                yaxis: { title: 'Prix (USDT)', autorange: true, type: 'linear', domain: [0.50, 1] }, // Prix en haut
+                
+                yaxis2: { title: 'ADX', titlefont: {color: '#1f77b4'}, tickfont: {color: '#1f77b4'}, 
+                          anchor: 'x', overlaying: 'y', side: 'right', domain: [0.25, 0.45], showgrid:false, range:[0,100] },
+                
+                yaxis3: { title: 'RSI', titlefont: {color: '#9467bd'}, tickfont: {color: '#9467bd'},
+                          anchor: 'x', overlaying: 'y', side: 'right', position: 0.93, // Positionner un peu plus à gauche de l'axe ADX
+                          domain: [0, 0.20], showgrid:false, range:[0,100],
+                    shapes: [ // Seuils RSI
+                        {type: 'line', xref: 'paper', x0:0, x1:1, y0:strategyParams.rsi_os, y1:strategyParams.rsi_os, line:{color:'grey', width:1, dash:'dot'}, layer:'below'},
+                        {type: 'line', xref: 'paper', x0:0, x1:1, y0:strategyParams.rsi_ob_exit, y1:strategyParams.rsi_ob_exit, line:{color:'grey', width:1, dash:'dot'}, layer:'below'},
                         {type: 'line', xref: 'paper', x0:0, x1:1, y0:50, y1:50, line:{color:'lightgrey', width:0.5, dash:'dash'}, layer:'below'}
                     ]
                 },
-                shapes: [], annotations: []
+                shapes: [], annotations: [] // Initialiser pour SL/TP et marqueurs
             };
             const traces = [];
+
             traces.push({ x: chartData.dates, open: chartData.open, high: chartData.high, low: chartData.low, close: chartData.close, type: 'candlestick', name: 'ETH/USDT', yaxis: 'y1'});
-            if (chartData.sma_short) traces.push({ x: chartData.dates, y: chartData.sma_short, type: 'scatter', mode: 'lines', name: `SMA ${BEST_PARAMS_JS.sma_short}`, line: {color: 'orange', width:1.5}, yaxis: 'y1' });
-            if (chartData.sma_long) traces.push({ x: chartData.dates, y: chartData.sma_long, type: 'scatter', mode: 'lines', name: `SMA ${BEST_PARAMS_JS.sma_long}`, line: {color: 'purple', width:1.5}, yaxis: 'y1' });
+            if (chartData.sma_short) traces.push({ x: chartData.dates, y: chartData.sma_short, type: 'scatter', mode: 'lines', name: `SMA ${strategyParams.sma_short}`, line: {color: 'orange', width:1.5}, yaxis: 'y1' });
+            if (chartData.sma_long) traces.push({ x: chartData.dates, y: chartData.sma_long, type: 'scatter', mode: 'lines', name: `SMA ${strategyParams.sma_long}`, line: {color: 'purple', width:1.5}, yaxis: 'y1' });
             if (chartData.sma_200) traces.push({ x: chartData.dates, y: chartData.sma_200, type: 'scatter', mode: 'lines', name: `SMA 200`, line: {color: 'grey', width:1, dash:'dot'}, yaxis: 'y1' });
+            
+            // Assigner les traces ADX et RSI à leurs axes Y respectifs
             if (chartData.adx) traces.push({ x: chartData.dates, y: chartData.adx, type: 'scatter', mode: 'lines', name: 'ADX', yaxis: 'y2', line: {color: '#1f77b4', width:1.5} });
             if (chartData.rsi) traces.push({ x: chartData.dates, y: chartData.rsi, type: 'scatter', mode: 'lines', name: 'RSI', yaxis: 'y3', line: {color: '#9467bd', width:1.5} });
             
-            if (chartData.trade_info) { // Pour le graphique détaillé d'un trade
-                layout.title = `Trade Détail (Entrée: ${new Date(chartData.trade_info.entry_time_utc).toLocaleString('fr-FR', {timeZone:'UTC'})})`;
+            if (isTradeDetailChart && chartData.trade_info) {
+                layout.title = `Visualisation Trade (Entrée: ${new Date(chartData.trade_info.entry_time_utc).toLocaleString('fr-FR', {timeZone:'UTC'})})`;
                 if (chartData.trade_info.entry_time_utc && chartData.trade_info.entry_price) {
                     layout.annotations.push({ x: chartData.trade_info.entry_time_utc, y: chartData.trade_info.entry_price, yref: 'y1', text: 'Entrée', showarrow: true, arrowhead: 4, ax: 0, ay: -40, bordercolor: '#27ae60', bgcolor: '#2ecc71', font:{color:'white'} });
                     if(chartData.trade_info.sl_price) layout.shapes.push({type: 'line', xref: 'paper', yref: 'y1', x0: 0, y0: chartData.trade_info.sl_price, x1: 1, y1: chartData.trade_info.sl_price, line: { color: 'red', width: 2, dash: 'dash' }});
@@ -217,7 +233,7 @@
                 if (chartData.trade_info.exit_time_utc && chartData.trade_info.exit_price) {
                     layout.annotations.push({ x: chartData.trade_info.exit_time_utc, y: chartData.trade_info.exit_price, yref: 'y1', text: `Sortie (${chartData.trade_info.exit_reason})`, showarrow: true, arrowhead: 4, ax: 0, ay: 30, bordercolor: '#c0392b', bgcolor: '#e74c3c', font:{color:'white'} });
                 }
-            } else { // Pour le graphique du marché actuel
+            } else {
                  layout.title = chartData.plot_title || 'Marché Actuel ETH/USDT (1H)';
             }
             Plotly.newPlot(containerId, traces, layout, {responsive: true});
@@ -242,10 +258,19 @@
             document.getElementById('currentPriceVal').textContent = formatNumber(latestIndicators.price, 2);
             const adxVal = parseFloat(latestIndicators.adx);
             document.getElementById('currentAdxVal').textContent = formatNumber(adxVal, 2);
-            let regime = "Indécis";
-            if (adxVal > params.adx_trend_th) regime = "Tendance";
-            else if (adxVal < params.adx_range_th) regime = "Range";
-            document.getElementById('currentRegime').textContent = regime;
+            let regime = "Indécis"; let conditionsText = "";
+            if (adxVal > params.adx_trend_th) {
+                regime = "Tendance";
+                conditionsText = `Signal d'achat si SMA(${params.sma_short}) > SMA(${params.sma_long}).\nSignal de vente si SMA(${params.sma_short}) < SMA(${params.sma_long}).`;
+            } else if (adxVal < params.adx_range_th) {
+                regime = "Range";
+                conditionsText = `Signal d'achat si RSI(${params.rsi_len}) croise AU-DESSUS de ${params.rsi_os}.\nSignal de vente si RSI(${params.rsi_len}) croise EN DESSOUS de ${params.rsi_ob_exit}.`;
+            } else {
+                regime = "Indécis";
+                conditionsText = "Pas de nouvelles entrées en régime indécis.";
+            }
+            document.getElementById('currentRegime').innerHTML = `<strong>${regime}</strong> <br><small>${conditionsText}</small>`;
+            
             document.getElementById('currentRsiVal').textContent = formatNumber(latestIndicators.rsi, 2);
             document.getElementById('currentSmaShortVal').textContent = formatNumber(latestIndicators.sma_short, 2);
             document.getElementById('currentSmaLongVal').textContent = formatNumber(latestIndicators.sma_long, 2);
@@ -259,22 +284,14 @@
                 const response = await fetch('/dashboard_data');
                 if (!response.ok) { console.error("Erreur HTTP (main dashboard):", response.status); document.getElementById('currentCapital').innerHTML = `<span class="negative">Erreur API</span>`; return; }
                 const data = await response.json();
-                // console.log("Données Dashboard Principal Reçues:", data);
 
                 const perf = data.performance_summary || {};
                 const currentState = data.current_state || {};
-                
-                // Initialiser BEST_PARAMS_JS avec les valeurs du backend (si disponibles et différentes)
-                // Ou utiliser les valeurs par défaut déjà définies si le backend ne les fournit pas dans /dashboard_data
-                // Pour ce dashboard, les BEST_PARAMS sont fixes.
-                if (data.params_for_strategy) { // Si le backend envoyait les params ici
-                    BEST_PARAMS_JS = data.params_for_strategy;
-                }
+                // Récupérer le capital initial du state si disponible, sinon de la performance, sinon fallback
+                const initialCapitalForDisplay = parseFloat(currentState.paper_capital_at_start_of_log) || parseFloat(perf.initial_capital_for_metrics) || 44.42; 
 
-
-                const initialCapitalFromState = parseFloat(currentState.paper_capital_at_start_of_log) || parseFloat(perf.initial_capital_for_metrics) || 44.42; 
-                document.getElementById('currentCapital').innerHTML = `<span class="${getPnlClass(currentState.paper_capital)}">${formatNumber(currentState.paper_capital)}</span> USDT`;
-                document.getElementById('currentCapital').dataset.initialCapital = initialCapitalFromState; // Stocker pour référence
+                document.getElementById('currentCapital').innerHTML = `<span class="${getPnlClass(currentState.paper_capital)}">${formatNumber(currentState.paper_capital)}</span>`;
+                document.getElementById('currentCapital').dataset.initialCapital = initialCapitalForDisplay; 
 
                 document.getElementById('totalReturn').innerHTML = `<span class="${getPnlClass(perf.total_return_pct)}">${formatNumber(perf.total_return_pct, 2, '%')}</span>`;
                 document.getElementById('maxDrawdown').innerHTML = `<span class="${(parseFloat(perf.max_drawdown_pct) === 0 || perf.max_drawdown_pct === null || typeof perf.max_drawdown_pct === 'undefined') ? 'neutral' : 'negative'}">${formatNumber(perf.max_drawdown_pct, 2, '%')}</span>`;
@@ -286,15 +303,15 @@
                 const tradesTableBody = document.getElementById('tradesTable').getElementsByTagName('tbody')[0];
                 tradesTableBody.innerHTML = ""; 
                 if (data.trades_history && Array.isArray(data.trades_history) && data.trades_history.length > 0 && !data.trades_history[0].error) {
-                    data.trades_history.slice().reverse().forEach(trade => { // Afficher les plus récents en premier
+                    data.trades_history.slice().reverse().forEach(trade => {
                         let row = tradesTableBody.insertRow();
                         let entryT = trade.EntryTimeUTC ? new Date(trade.EntryTimeUTC) : null;
                         let exitT = trade.ExitTimeUTC ? new Date(trade.ExitTimeUTC) : null;
-                        row.insertCell().textContent = entryT ? entryT.toLocaleString('fr-FR', {timeZone:'UTC', hour12: false}) : 'N/A';
+                        row.insertCell().textContent = entryT ? entryT.toLocaleString('fr-FR', {timeZone:'UTC', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : 'N/A';
                         row.insertCell().textContent = formatNumber(trade.EntryPrice, 2);
-                        row.insertCell().textContent = exitT ? exitT.toLocaleString('fr-FR', {timeZone:'UTC', hour12: false}) : 'N/A';
+                        row.insertCell().textContent = exitT ? exitT.toLocaleString('fr-FR', {timeZone:'UTC', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : 'N/A';
                         row.insertCell().textContent = formatNumber(trade.ExitPrice, 2);
-                        row.insertCell().textContent = formatNumber(trade.Quantity, 8);
+                        row.insertCell().textContent = formatNumber(trade.Quantity, 6); // Moins de décimales pour ETH
                         row.insertCell().innerHTML = `<span class="${getPnlClass(trade.PnL_Abs)}">${formatNumber(trade.PnL_Abs, 2)}</span>`;
                         row.insertCell().innerHTML = `<span class="${getPnlClass(parseFloat(trade.PnL_Pct) * 100)}">${formatNumber(parseFloat(trade.PnL_Pct) * 100, 2, '%')}</span>`;
                         row.insertCell().textContent = trade.ExitReason;
@@ -309,16 +326,16 @@
                     });
                 } else { 
                     let row = tradesTableBody.insertRow(); let cell = row.insertCell(); 
-                    cell.colSpan = 9; cell.textContent = (data.trades_history && data.trades_history[0] && data.trades_history[0].error) ? data.trades_history[0].error : "Aucun trade clôturé.";
+                    cell.colSpan = 9; cell.textContent = (data.trades_history && data.trades_history.length > 0 && data.trades_history[0].error) ? data.trades_history[0].error : "Aucun trade clôturé.";
                 }
                 
                 if (data.activity_log && Array.isArray(data.activity_log)) {
-                    document.getElementById('activityLog').textContent = data.activity_log.join("").replace(/\\u00e9/g, "é").replace(/\\u00e8/g, "è").replace(/\\u00e0/g, "à"); // Gérer les caractères unicode
+                    document.getElementById('activityLog').textContent = data.activity_log.join("").replace(/\\u00e9/g, "é").replace(/\\u00e8/g, "è").replace(/\\u00e0/g, "à");
                 } else { document.getElementById('activityLog').textContent = "Log d'activité non disponible.";}
 
                 const ctxEquity = document.getElementById('equityCurveChart').getContext('2d');
                 if (window.myEquityChart) { window.myEquityChart.destroy(); window.myEquityChart = null; }
-                if (perf.equity_curve_values && perf.equity_curve_timestamps && perf.equity_curve_values.length > 1) { // Au moins 2 points pour une ligne
+                if (perf.equity_curve_values && perf.equity_curve_timestamps && perf.equity_curve_values.length >= 2) { // Besoin d'au moins 2 points
                     const equityTimestamps = perf.equity_curve_timestamps.map(t => t ? new Date(t).toLocaleDateString('fr-FR') + ' ' + new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Début');
                     window.myEquityChart = new Chart(ctxEquity, {
                         type: 'line', data: { labels: equityTimestamps, datasets: [{
@@ -336,7 +353,7 @@
                 } else { 
                     ctxEquity.clearRect(0, 0, ctxEquity.canvas.width, ctxEquity.canvas.height);
                     ctxEquity.font = "16px Arial"; ctxEquity.textAlign = "center";
-                    ctxEquity.fillText("Données d'équité insuffisantes ou non disponibles", ctxEquity.canvas.width/2, ctxEquity.canvas.height/2);
+                    ctxEquity.fillText("Données d'équité insuffisantes pour tracer le graphique.", ctxEquity.canvas.width/2, ctxEquity.canvas.height/2);
                 }
             } catch (error) { console.error("Erreur updateMainDashboardData:", error); }
         }
@@ -348,25 +365,22 @@
                 const marketData = await marketResponse.json();
                 if (marketData.error) throw new Error(marketData.error);
                 
-                // Utiliser les paramètres renvoyés par le backend si disponibles, sinon ceux définis en JS
                 BEST_PARAMS_JS = marketData.params_used_for_indicators || BEST_PARAMS_JS; 
                 
-                displayKlineChartWithPlotly(marketData, 'currentMarketChartContainer'); // Utiliser l'ID correct
+                displayKlineChartWithPlotly(marketData, 'currentMarketChartContainer', BEST_PARAMS_JS, false); // false car ce n'est pas un trade détail
                 if (marketData.latest_indicators) {
                     updateCurrentStrategyInfo(marketData.latest_indicators, BEST_PARAMS_JS);
                 }
             } catch (error) {
                 console.error("Erreur fetchAndDisplayCurrentMarketChart:", error);
                 const container = document.getElementById('currentMarketChartContainer');
-                if(container) container.innerHTML = `<p style="color:red;">Erreur chargement graphique marché: ${error.message}</p>`;
+                if(container) container.innerHTML = `<p style="color:red;">Erreur chargement graphique marché actuel: ${error.message}</p>`;
             }
         }
 
-        // Charger les données au démarrage et rafraîchir
         document.addEventListener('DOMContentLoaded', function() {
             updateMainDashboardData();
             fetchAndDisplayCurrentMarketChart(); 
-            
             setInterval(updateMainDashboardData, 30000); 
             setInterval(fetchAndDisplayCurrentMarketChart, 60000); 
         });
