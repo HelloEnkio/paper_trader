@@ -7,6 +7,13 @@ import json
 import os
 from datetime import datetime, timezone, timedelta
 import logging
+import os
+import time
+import csv
+import requests
+import hashlib
+import hmac
+import base64
 
 # --- Configuration des Chemins ---
 PERSISTENT_DATA_PATH = os.getenv("PERSISTENT_DATA_PATH", "/app/data") 
