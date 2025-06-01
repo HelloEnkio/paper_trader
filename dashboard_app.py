@@ -18,6 +18,7 @@ KLINES_BASE_DIR = os.path.join(PERSISTENT_DATA_PATH, "klines_data")
 SYMBOL_FOR_KLINES = "ETH-USDT" # Doit correspondre à celui du paper_trader
 TIMEFRAME_FOR_KLINES = '1hour' # Doit correspondre à celui du paper_trader
 LOCAL_KLINES_FILE = os.path.join(KLINES_BASE_DIR, f"local_klines_{SYMBOL_FOR_KLINES.replace('-', '_')}_{TIMEFRAME_FOR_KLINES}.csv")
+HISTORICAL_DATA_FETCH_LIMIT = 350 # Utilisé par get_market_klines
 
 
 # Paramètres de la stratégie (BEST_PARAMS de votre paper_trader.py)
@@ -80,7 +81,7 @@ def save_klines_locally(df_new_klines, symbol, timeframe):
         logging.error(f"Erreur finale de sauvegarde des klines dans {filename}: {e}")
 
 
-def get_market_klines(symbol=SYMBOL, timeframe_type=TIMEFRAME_KUCOIN, limit=HISTORICAL_DATA_FETCH_LIMIT):
+def get_market_klines(symbol=SYMBOL_FOR_KLINES, timeframe_type=TIMEFRAME_FOR_KLINES, limit=HISTORICAL_DATA_FETCH_LIMIT):
     path = '/api/v1/market/candles'
     end_time_s = int(time.time())
     # S'assurer que timeframe_minutes est un nombre
