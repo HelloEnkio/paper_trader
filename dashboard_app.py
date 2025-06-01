@@ -41,6 +41,29 @@ BEST_PARAMS = {
 }
 INITIAL_PAPER_CAPITAL = 44.42 # Doit correspondre à celui de votre paper_trader.py
 
+
+BASE_URL = 'https://api.kucoin.com'
+BEST_PARAMS = {
+    'adx_len': 20, 'adx_trend_th': 28, 'adx_range_th': 22,
+    'sma_short': 30, 'sma_long': 50, 
+    'rsi_len': 10, 'rsi_os': 35, 'rsi_ob_exit': 65,
+    'sl': 0.02, 'tp': 0.088 
+}
+STRATEGY_NAME = (f"PaperBot_ADX{BEST_PARAMS['adx_len']}"
+                 f"({BEST_PARAMS['adx_trend_th']}/{BEST_PARAMS['adx_range_th']})_"
+                 f"SMA({BEST_PARAMS['sma_short']}/{BEST_PARAMS['sma_long']})_"
+                 f"RSI({BEST_PARAMS['rsi_len']}_{BEST_PARAMS['rsi_os']}/{BEST_PARAMS['rsi_ob_exit']})_"
+                 f"SL{BEST_PARAMS['sl']:.1%}_TP{BEST_PARAMS['tp']:.1%}")
+
+RISK_PER_TRADE_PCT = 0.02
+COMMISSION_RATE = 0.001 # Taker fee 0.1%
+
+STATE_FILE = "paper_bot_state.json"
+TRADES_LOG_FILE = "paper_bot_trades.csv"
+KLINES_LOG_FILE = f"local_klines_{SYMBOL.replace('-', '_')}_{TIMEFRAME_KUCOIN}.csv"
+LOG_FILE_ACTIVITY = "paper_bot_activity.log" # Renommé pour clarté
+
+
 app = Flask(__name__)
 
 # --- Fonctions Utilitaires (copiées/adaptées de vos scripts précédents) ---
