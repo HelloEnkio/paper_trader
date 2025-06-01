@@ -135,82 +135,103 @@
 
 <script>
         window.myEquityChart = null; 
-        let BEST_PARAMS_JS = { // Sera peuplé par l'appel API
+        let BEST_PARAMS_JS = { 
             'adx_len': 20, 'adx_trend_th': 28, 'adx_range_th': 22, 
             'sma_short': 30, 'sma_long': 50, 
             'rsi_len': 10, 'rsi_os': 35, 'rsi_ob_exit': 65,
             'sl': 0.02, 'tp': 0.088 
         }; 
 
-        function formatNumber(value, decimals = 2, unit = '') { /* ... (inchangée) ... */ }
-        function getPnlClass(value) { /* ... (inchangée) ... */ }
+        function formatNumber(value, decimals = 2, unit = '') {
+            if (value === null || typeof value === 'undefined' || value === "N/A" || Number.isNaN(parseFloat(value))) {
+                return "N/A";
+            }
+            const num = parseFloat(value);
+            if (Number.isNaN(num)) return "N/A"; // Double vérification
+            return num.toFixed(decimals) + unit;
+        }
+        function getPnlClass(value) {
+            const num = parseFloat(value);
+            if (Number.isNaN(num) || Math.abs(num) < 0.0001) return 'neutral';
+            return num > 0 ? 'positive' : 'negative';
+        }
 
         async function fetchKlineDataForTrade(entryTimeUtcIso) {
-            // ... (Fonction fetchKlineDataForTrade comme dans la réponse précédente)
-            // S'assurer qu'elle appelle displayKlineChartWithPlotly avec le 4ème argument à true
-            // displayKlineChartWithPlotly(klineData, 'klineChartContainer', paramsForChart, true); 
+            const klineChartWrapper = document.getElementById('klineChartWrapper');
+            const klineChartContainer = document.getElementById('klineChartContainer');
+            const entryConditionsEl = document.getElementById('entryConditions');
+            const exitConditionsEl = document.getElementById('exitConditions');
+
+            klineChartContainer.innerHTML = '<p class="loading-placeholder">Chargement du graphique du trade...</p>';
+            entryConditionsEl.textContent = 'Chargement...';
+            exitConditionsEl.textContent = 'Chargement...';
+            klineChartWrapper.style.display = 'block';
+            document.getElementById('klineChartTitle').textContent = `Visualisation du Trade (Entrée: ${entryTimeUtcIso ? new Date(entryTimeUtcIso).toLocaleString('fr-FR', {timeZone:'UTC'}) : 'N/A'})`;
+
+            try {
+                const response = await fetch(`/api/kline_data_for_trade?entry_time_utc=${encodeURIComponent(entryTimeUtcIso)}`);
+                if (!response.ok) throw new Error(`Erreur HTTP pour kline data: ${response.status} ${response.statusText}`);
+                const klineData = await response.json();
+                if (klineData.error) throw new Error(klineData.error);
+                
+                const paramsForChart = klineData.params_used_for_indicators || BEST_PARAMS_JS;
+                displayKlineChartWithPlotly(klineData, 'klineChartContainer', paramsForChart, true);
+                
+                entryConditionsEl.textContent = klineData.conditions_at_entry ? JSON.stringify(klineData.conditions_at_entry, Object.keys(klineData.conditions_at_entry).sort(), 2) : "Non disponible";
+                exitConditionsEl.textContent = klineData.conditions_at_exit && klineData.trade_info.exit_reason ? JSON.stringify(klineData.conditions_at_exit, Object.keys(klineData.conditions_at_exit).sort(), 2) : "Trade non clôturé ou conditions non disponibles";
+
+            } catch (error) {
+                console.error("Erreur fetchKlineDataForTrade:", error);
+                klineChartContainer.innerHTML = `<p style="color:red;">Erreur chargement graphique: ${error.message}</p>`;
+            }
         }
-        
+
         function displayKlineChartWithPlotly(chartData, containerId, strategyParams, isTradeDetailChart = false) {
             const klineChartContainer = document.getElementById(containerId);
             klineChartContainer.innerHTML = ''; 
 
             const traces = [];
-            // Chandeliers sur le subplot principal (yaxis)
             traces.push({
                 x: chartData.dates, open: chartData.open, high: chartData.high,
                 low: chartData.low, close: chartData.close,
                 type: 'candlestick', name: 'ETH/USDT', 
-                xaxis: 'x', yaxis: 'y' // Explicitement pour le premier subplot
+                xaxis: 'x', yaxis: 'y1' // Assigner à yaxis nommé 'y' ou 'y1'
             });
 
-            // SMAs sur le subplot principal (yaxis)
-            if (chartData.sma_short) traces.push({ x: chartData.dates, y: chartData.sma_short, type: 'scatter', mode: 'lines', name: `SMA ${strategyParams.sma_short}`, line: {color: 'orange', width:1.5}, yaxis: 'y' });
-            if (chartData.sma_long) traces.push({ x: chartData.dates, y: chartData.sma_long, type: 'scatter', mode: 'lines', name: `SMA ${strategyParams.sma_long}`, line: {color: 'purple', width:1.5}, yaxis: 'y' });
-            if (chartData.sma_200) traces.push({ x: chartData.dates, y: chartData.sma_200, type: 'scatter', mode: 'lines', name: `SMA 200`, line: {color: 'grey', width:1, dash:'dot'}, yaxis: 'y' });
+            if (chartData.sma_short) traces.push({ x: chartData.dates, y: chartData.sma_short, type: 'scatter', mode: 'lines', name: `SMA ${strategyParams.sma_short}`, line: {color: 'orange', width:1.5}, yaxis: 'y1' });
+            if (chartData.sma_long) traces.push({ x: chartData.dates, y: chartData.sma_long, type: 'scatter', mode: 'lines', name: `SMA ${strategyParams.sma_long}`, line: {color: 'purple', width:1.5}, yaxis: 'y1' });
+            if (chartData.sma_200) traces.push({ x: chartData.dates, y: chartData.sma_200, type: 'scatter', mode: 'lines', name: `SMA 200`, line: {color: 'grey', width:1, dash:'dot'}, yaxis: 'y1' });
             
-            // ADX sur le deuxième subplot (yaxis2)
-            if (chartData.adx) {
-                traces.push({ x: chartData.dates, y: chartData.adx, type: 'scatter', mode: 'lines', name: 'ADX', yaxis: 'y2', line: {color: '#1f77b4', width:1.5} });
-                // Ligne pour ADX Trend Threshold
-                traces.push({ x: [chartData.dates[0], chartData.dates[chartData.dates.length-1]], y: [strategyParams.adx_trend_th, strategyParams.adx_trend_th], mode: 'lines', line: {color: 'rgba(31, 119, 180, 0.5)', width:1, dash:'dash'}, yaxis: 'y2', showlegend:false});
-                // Ligne pour ADX Range Threshold
-                traces.push({ x: [chartData.dates[0], chartData.dates[chartData.dates.length-1]], y: [strategyParams.adx_range_th, strategyParams.adx_range_th], mode: 'lines', line: {color: 'rgba(31, 119, 180, 0.5)', width:1, dash:'dash'}, yaxis: 'y2', showlegend:false});
-            }
+            if (chartData.adx) traces.push({ x: chartData.dates, y: chartData.adx, type: 'scatter', mode: 'lines', name: 'ADX', yaxis: 'y2', line: {color: '#1f77b4', width:1.5} });
+            if (chartData.rsi) traces.push({ x: chartData.dates, y: chartData.rsi, type: 'scatter', mode: 'lines', name: 'RSI', yaxis: 'y3', line: {color: '#9467bd', width:1.5} });
             
-            // RSI sur le troisième subplot (yaxis3)
-            if (chartData.rsi) {
-                traces.push({ x: chartData.dates, y: chartData.rsi, type: 'scatter', mode: 'lines', name: 'RSI', yaxis: 'y3', line: {color: '#9467bd', width:1.5} });
-                // Lignes pour seuils RSI
-                traces.push({ x: [chartData.dates[0], chartData.dates[chartData.dates.length-1]], y: [strategyParams.rsi_os, strategyParams.rsi_os], mode: 'lines', line: {color:'grey', width:1, dash:'dot'}, yaxis: 'y3', showlegend:false});
-                traces.push({ x: [chartData.dates[0], chartData.dates[chartData.dates.length-1]], y: [strategyParams.rsi_ob_exit, strategyParams.rsi_ob_exit], mode: 'lines', line:{color:'grey', width:1, dash:'dot'}, yaxis: 'y3', showlegend:false});
-                traces.push({ x: [chartData.dates[0], chartData.dates[chartData.dates.length-1]], y: [50, 50], mode: 'lines', line:{color:'lightgrey', width:0.5, dash:'dash'}, yaxis: 'y3', showlegend:false});
-            }
-
             const layout = {
                 dragmode: 'zoom', hovermode: 'x unified',
-                legend: {orientation: "h", yanchor: "bottom", y: 1.05, xanchor: "right", x: 1},
-                margin: { l: 50, r: 50, b: 50, t: 60, pad: 4 },
-                grid: {rows: 3, columns: 1, pattern: 'independent'}, // Définit une grille de 3 lignes pour les subplots
-
-                xaxis: { title: 'Date', type: 'date', rangeslider: { visible: false } },
-                // L'axe Y principal (pour les prix) est yaxis (ou y1 implicitement)
-                yaxis: { title: 'Prix (USDT)', autorange: true, type: 'linear' }, // domain est géré par la grille
-                yaxis2: { title: 'ADX', autorange: false, range: [0,100], showgrid: false }, // domain géré par la grille
-                yaxis3: { title: 'RSI', autorange: false, range: [0,100], showgrid: false }, // domain géré par la grille
+                legend: {orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "right", x: 1},
+                margin: { l: 60, r: 120, b: 50, t: 60, pad: 4 }, // Espace pour les titres d'axes
                 
+                xaxis: { domain: [0, 0.9], rangeslider: {visible: false} }, // Laisser de la place à droite pour les axes Y des indicateurs
+                yaxis: { title: 'Prix (USDT)', domain: [0.5, 1] }, // Axe principal pour les prix
+                yaxis2: { title: 'ADX', domain: [0.25, 0.45], anchor: 'free', overlaying: 'y', side: 'right', position: 0.95, showgrid:false, range:[0,100] },
+                yaxis3: { title: 'RSI', domain: [0, 0.20], anchor: 'free', overlaying: 'y', side: 'right', position: 0.95, showgrid:false, range:[0,100],
+                    shapes: [
+                        {type: 'line', xref: 'paper', x0:0, x1:1, y0:strategyParams.rsi_os, y1:strategyParams.rsi_os, line:{color:'grey', width:1, dash:'dot'}, layer:'below'},
+                        {type: 'line', xref: 'paper', x0:0, x1:1, y0:strategyParams.rsi_ob_exit, y1:strategyParams.rsi_ob_exit, line:{color:'grey', width:1, dash:'dot'}, layer:'below'},
+                        {type: 'line', xref: 'paper', x0:0, x1:1, y0:50, y1:50, line:{color:'lightgrey', width:0.5, dash:'dash'}, layer:'below'}
+                    ]
+                },
                 shapes: [], annotations: []
             };
             
             if (isTradeDetailChart && chartData.trade_info) {
                 layout.title = `Visualisation Trade (Entrée: ${new Date(chartData.trade_info.entry_time_utc).toLocaleString('fr-FR', {timeZone:'UTC'})})`;
                 if (chartData.trade_info.entry_time_utc && chartData.trade_info.entry_price) {
-                    layout.annotations.push({ x: chartData.trade_info.entry_time_utc, y: chartData.trade_info.entry_price, yref: 'y', text: 'Entrée', showarrow: true, arrowhead: 4, ax: 0, ay: -40, bordercolor: '#27ae60', bgcolor: '#2ecc71', font:{color:'white'} });
-                    if(chartData.trade_info.sl_price) layout.shapes.push({type: 'line', xref: 'paper', yref: 'y', x0: 0, y0: chartData.trade_info.sl_price, x1: 1, y1: chartData.trade_info.sl_price, line: { color: 'red', width: 2, dash: 'dash' }});
-                    if(chartData.trade_info.tp_price) layout.shapes.push({type: 'line', xref: 'paper', yref: 'y', x0: 0, y0: chartData.trade_info.tp_price, x1: 1, y1: chartData.trade_info.tp_price, line: { color: 'green', width: 2, dash: 'dash' }});
+                    layout.annotations.push({ x: chartData.trade_info.entry_time_utc, y: chartData.trade_info.entry_price, yref: 'y1', text: 'Entrée', showarrow: true, arrowhead: 4, ax: 0, ay: -40, bordercolor: '#27ae60', bgcolor: '#2ecc71', font:{color:'white'} });
+                    if(chartData.trade_info.sl_price) layout.shapes.push({type: 'line', xref: 'paper', yref: 'y1', x0: 0, y0: chartData.trade_info.sl_price, x1: 1, y1: chartData.trade_info.sl_price, line: { color: 'red', width: 2, dash: 'dash' }});
+                    if(chartData.trade_info.tp_price) layout.shapes.push({type: 'line', xref: 'paper', yref: 'y1', x0: 0, y0: chartData.trade_info.tp_price, x1: 1, y1: chartData.trade_info.tp_price, line: { color: 'green', width: 2, dash: 'dash' }});
                 }
                 if (chartData.trade_info.exit_time_utc && chartData.trade_info.exit_price) {
-                    layout.annotations.push({ x: chartData.trade_info.exit_time_utc, y: chartData.trade_info.exit_price, yref: 'y', text: `Sortie (${chartData.trade_info.exit_reason})`, showarrow: true, arrowhead: 4, ax: 0, ay: 30, bordercolor: '#c0392b', bgcolor: '#e74c3c', font:{color:'white'} });
+                    layout.annotations.push({ x: chartData.trade_info.exit_time_utc, y: chartData.trade_info.exit_price, yref: 'y1', text: `Sortie (${chartData.trade_info.exit_reason})`, showarrow: true, arrowhead: 4, ax: 0, ay: 30, bordercolor: '#c0392b', bgcolor: '#e74c3c', font:{color:'white'} });
                 }
             } else {
                  layout.title = chartData.plot_title || 'Marché Actuel ETH/USDT (1H)';
@@ -219,6 +240,7 @@
         }
 
         function updateCurrentStrategyInfo(latestIndicators, params) {
+            // ... (Fonction comme avant, mais on va la rendre plus explicite pour les règles)
             document.querySelector('[data-param="adx_len"]').textContent = params.adx_len;
             document.querySelector('[data-param-val="adx_len_val"]').textContent = params.adx_len;
             document.querySelector('[data-param="adx_trend_th"]').textContent = params.adx_trend_th;
@@ -239,39 +261,40 @@
             document.getElementById('currentAdxVal').textContent = formatNumber(adxVal, 2);
             
             let regime = "Indécis"; 
-            let conditionsText = "";
-            let activeStrategySignal = latestIndicators.final_signal_regime; // Signal final calculé par le backend
+            let conditionsText = "Règles Actives :\n";
+            let activeStrategySignal = latestIndicators.final_signal_regime;
 
-            if (!Number.isNaN(adxVal)) { // S'assurer que adxVal est un nombre
+            if (!Number.isNaN(adxVal)) {
                 if (adxVal > params.adx_trend_th) {
-                    regime = "Tendance";
-                    conditionsText = `Régime Tendance (ADX ${formatNumber(adxVal,1)} > ${params.adx_trend_th}):\n` +
-                                   `  - Achat si SMA(${params.sma_short}) [${formatNumber(latestIndicators.sma_short,1)}] croise AU-DESSUS de SMA(${params.sma_long}) [${formatNumber(latestIndicators.sma_long,1)}]\n` +
-                                   `  - Vente si SMA(${params.sma_short}) [${formatNumber(latestIndicators.sma_short,1)}] croise EN DESSOUS de SMA(${params.sma_long}) [${formatNumber(latestIndicators.sma_long,1)}]`;
+                    regime = "TENDANCE";
+                    conditionsText += `  Mode TENDANCE (ADX ${formatNumber(adxVal,1)} > ${params.adx_trend_th}). Utilisation SMA Crossover:\n`;
+                    conditionsText += `    - ACHAT si SMA(${params.sma_short}) [${formatNumber(latestIndicators.sma_short,1)}] croise AU-DESSUS de SMA(${params.sma_long}) [${formatNumber(latestIndicators.sma_long,1)}].\n`;
+                    conditionsText += `    - VENTE (sortie LONG) si SMA(${params.sma_short}) [${formatNumber(latestIndicators.sma_short,1)}] croise EN DESSOUS de SMA(${params.sma_long}) [${formatNumber(latestIndicators.sma_long,1)}].\n`;
+                    conditionsText += `    - (Signal SMA actuel: ${latestIndicators.signal_sma_cross})\n`;
                 } else if (adxVal < params.adx_range_th) {
-                    regime = "Range";
-                    conditionsText = `Régime Range (ADX ${formatNumber(adxVal,1)} < ${params.adx_range_th}):\n` +
-                                   `  - Achat si RSI(${params.rsi_len}) [${formatNumber(latestIndicators.rsi,1)}] était < ${params.rsi_os} et croise AU-DESSUS de ${params.rsi_os}\n` +
-                                   `  - Vente si RSI(${params.rsi_len}) [${formatNumber(latestIndicators.rsi,1)}] était > ${params.rsi_ob_exit} et croise EN DESSOUS de ${params.rsi_ob_exit}`;
+                    regime = "RANGE";
+                    conditionsText += `  Mode RANGE (ADX ${formatNumber(adxVal,1)} < ${params.adx_range_th}). Utilisation RSI:\n`;
+                    conditionsText += `    - ACHAT si RSI(${params.rsi_len}) [${formatNumber(latestIndicators.rsi,1)}] était < ${params.rsi_os} et vient de croiser AU-DESSUS de ${params.rsi_os}.\n`;
+                    conditionsText += `    - VENTE (sortie LONG) si RSI(${params.rsi_len}) [${formatNumber(latestIndicators.rsi,1)}] était > ${params.rsi_ob_exit} et vient de croiser EN DESSOUS de ${params.rsi_ob_exit}.\n`;
+                    conditionsText += `    - (Signal RSI actuel: ${latestIndicators.signal_rsi})\n`;
                 } else {
-                    regime = "Indécis";
-                    conditionsText = `Régime Indécis (ADX ${formatNumber(adxVal,1)} entre ${params.adx_range_th} et ${params.adx_trend_th}). Pas de nouvelles entrées.`;
+                    regime = "INDÉCIS";
+                    conditionsText = `  Mode INDÉCIS (ADX ${formatNumber(adxVal,1)} entre ${params.adx_range_th} et ${params.adx_trend_th}).\n    - Pas de nouvelles entrées.\n    - Positions gérées par SL/TP.`;
                 }
             } else {
-                conditionsText = "Données ADX non disponibles pour déterminer le régime.";
+                conditionsText = "  Données ADX non disponibles pour déterminer le régime.";
             }
-            document.getElementById('currentRegime').innerHTML = `<strong>${regime}</strong><br><pre style="margin-top:5px; font-size:0.9em;">${conditionsText}</pre>`;
+            document.getElementById('currentRegime').innerHTML = `<strong>${regime}</strong><br><pre style="margin-top:5px; font-size:0.9em; background-color:#e9ecef; padding:5px; border-radius:3px;">${conditionsText}</pre>`;
             
             document.getElementById('currentRsiVal').textContent = formatNumber(latestIndicators.rsi, 2);
             document.getElementById('currentSmaShortVal').textContent = formatNumber(latestIndicators.sma_short, 2);
             document.getElementById('currentSmaLongVal').textContent = formatNumber(latestIndicators.sma_long, 2);
             document.getElementById('currentSmaSignal').textContent = latestIndicators.signal_sma_cross;
             document.getElementById('currentRsiSignal').textContent = latestIndicators.signal_rsi;
-            document.getElementById('currentFinalSignal').textContent = activeStrategySignal; // Utiliser le signal final du backend
+            document.getElementById('currentFinalSignal').textContent = activeStrategySignal;
         }
         
         async function updateMainDashboardData() {
-            // ... (Contenu de updateMainDashboardData comme avant, mais attention à la gestion de la courbe d'équité)
             try {
                 const response = await fetch('/dashboard_data');
                 if (!response.ok) { console.error("Erreur HTTP (main dashboard):", response.status); document.getElementById('currentCapital').innerHTML = `<span class="negative">Erreur API</span>`; return; }
@@ -317,23 +340,24 @@
                     let row = tradesTableBody.insertRow(); let cell = row.insertCell(); 
                     cell.colSpan = 9; cell.textContent = (data.trades_history && data.trades_history[0] && data.trades_history[0].error) ? data.trades_history[0].error : "Aucun trade clôturé.";
                 }
+                
                 if (data.activity_log && Array.isArray(data.activity_log)) {
                     document.getElementById('activityLog').textContent = data.activity_log.join("").replace(/\\u00e9/g, "é").replace(/\\u00e8/g, "è").replace(/\\u00e0/g, "à");
                 } else { document.getElementById('activityLog').textContent = "Log d'activité non disponible.";}
 
                 const ctxEquity = document.getElementById('equityCurveChart').getContext('2d');
                 if (window.myEquityChart) { window.myEquityChart.destroy(); window.myEquityChart = null; }
-                // CORRECTION pour la courbe d'équité : afficher même avec 1 point
+                // CORRECTION: Afficher le graphique d'équité même avec un seul point
                 if (perf.equity_curve_values && perf.equity_curve_timestamps && perf.equity_curve_values.length > 0) {
                     const equityTimestamps = perf.equity_curve_timestamps.map(t => t ? new Date(t).toLocaleDateString('fr-FR') + ' ' + new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Début');
                     window.myEquityChart = new Chart(ctxEquity, {
-                        type: perf.equity_curve_values.length === 1 ? 'scatter' : 'line', // scatter si un seul point
+                        type: perf.equity_curve_values.length === 1 ? 'scatter' : 'line', 
                         data: { labels: equityTimestamps, datasets: [{
                                 label: 'Équité Paper Trading (USDT)', data: perf.equity_curve_values,
                                 borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                                tension: 0.1, fill: perf.equity_curve_values.length > 1, // fill si c'est une ligne
-                                pointRadius: perf.equity_curve_values.length < 50 ? 3 : (perf.equity_curve_values.length === 1 ? 5 : 0), // Point plus gros si seul
-                                showLine: perf.equity_curve_values.length > 1 // Pas de ligne si un seul point
+                                tension: 0.1, fill: perf.equity_curve_values.length > 1,
+                                pointRadius: perf.equity_curve_values.length < 50 ? 3 : (perf.equity_curve_values.length === 1 ? 5 : 0),
+                                showLine: perf.equity_curve_values.length > 1
                             }]
                         },
                         options: { responsive: true, maintainAspectRatio: false, scales: { 
@@ -371,8 +395,13 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            // S'assurer que BEST_PARAMS_JS est initialisé (même si c'est avec des valeurs par défaut)
+            // avant le premier appel à updateCurrentStrategyInfo via fetchAndDisplayCurrentMarketChart
+            // Ceci est déjà fait globalement.
+
             updateMainDashboardData();
             fetchAndDisplayCurrentMarketChart(); 
+            
             setInterval(updateMainDashboardData, 30000); 
             setInterval(fetchAndDisplayCurrentMarketChart, 60000); 
         });
