@@ -60,7 +60,6 @@ COMMISSION_RATE = 0.001 # Taker fee 0.1%
 
 STATE_FILE = "paper_bot_state.json"
 TRADES_LOG_FILE = "paper_bot_trades.csv"
-KLINES_LOG_FILE = f"local_klines_{SYMBOL.replace('-', '_')}_{TIMEFRAME_KUCOIN}.csv"
 LOG_FILE_ACTIVITY = "paper_bot_activity.log" # Renommé pour clarté
 
 
