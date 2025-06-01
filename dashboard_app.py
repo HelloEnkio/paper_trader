@@ -6,6 +6,7 @@ import numpy as np
 import json
 import os
 from datetime import datetime, timezone, timedelta
+import logging
 
 # --- Configuration des Chemins ---
 PERSISTENT_DATA_PATH = os.getenv("PERSISTENT_DATA_PATH", "/app/data") 
@@ -31,6 +32,96 @@ INITIAL_PAPER_CAPITAL = 44.42 # Doit correspondre à celui de votre paper_trader
 app = Flask(__name__)
 
 # --- Fonctions Utilitaires (copiées/adaptées de vos scripts précédents) ---
+
+def save_klines_locally(df_new_klines, symbol, timeframe):
+    # S'assurer que KLINES_BASE_DIR est accessible ou créé
+    if not os.path.exists(KLINES_BASE_DIR):
+        try:
+            os.makedirs(KLINES_BASE_DIR, exist_ok=True)
+            logging.info(f"Création du répertoire de klines: {KLINES_BASE_DIR}")
+        except Exception as e:
+            logging.error(f"Impossible de créer le répertoire klines {KLINES_BASE_DIR}: {e}")
+            # Fallback ou erreur ? Pour l'instant, on logue.
+            # Si on ne peut pas créer le dossier, la sauvegarde échouera.
+            # On pourrait choisir de ne pas sauvegarder si le dossier n'est pas là.
+            return 
+
+    filename = os.path.join(KLINES_BASE_DIR, f"local_klines_{symbol.replace('-', '_')}_{timeframe}.csv")
+    df_to_save = df_new_klines.copy()
+    if df_to_save.index.name is None: df_to_save.index.name = 'Open time'
+    
+    file_exists_and_not_empty = os.path.exists(filename) and os.path.getsize(filename) > 0
+
+    if file_exists_and_not_empty:
+        try:
+            df_existing = pd.read_csv(filename, index_col='Open time', parse_dates=True, sep=';')
+            if not df_existing.empty:
+                # Assurer la cohérence des fuseaux horaires avant la concaténation
+                if df_existing.index.tz is None: df_existing.index = df_existing.index.tz_localize('UTC')
+                else: df_existing.index = df_existing.index.tz_convert('UTC')
+                
+                if df_to_save.index.tz is None: df_to_save.index = df_to_save.index.tz_localize('UTC')
+                else: df_to_save.index = df_to_save.index.tz_convert('UTC')
+
+                df_combined = pd.concat([df_existing, df_to_save])
+                df_combined = df_combined[~df_combined.index.duplicated(keep='last')]
+                df_combined.sort_index(inplace=True)
+                df_combined.to_csv(filename, sep=';')
+                logging.info(f"Données de marché (klines) mises à jour dans {filename} ({len(df_combined)} lignes).")
+                return 
+        except Exception as e:
+            logging.error(f"Erreur lors de la mise à jour du fichier klines local {filename}: {e}. Tentative d'écrasement.")
+    
+    # Si le fichier n'existe pas, est vide, ou si l'erreur de fusion, on l'écrase/crée.
+    try:
+        df_to_save.to_csv(filename, sep=';')
+        logging.info(f"Données de marché (klines) sauvegardées dans {filename} ({len(df_to_save)} lignes).")
+    except Exception as e:
+        logging.error(f"Erreur finale de sauvegarde des klines dans {filename}: {e}")
+
+
+def get_market_klines(symbol=SYMBOL, timeframe_type=TIMEFRAME_KUCOIN, limit=HISTORICAL_DATA_FETCH_LIMIT):
+    path = '/api/v1/market/candles'
+    end_time_s = int(time.time())
+    # S'assurer que timeframe_minutes est un nombre
+    tf_minutes_for_calc = TIMEFRAME_TO_MINUTES.get(timeframe_type, 60) # Défaut à 60 minutes (1 heure)
+    start_time_s = end_time_s - (limit * tf_minutes_for_calc * 60 * 1.2) # 1.2 pour marge de sécurité
+    
+    params = {'symbol': symbol, 'type': timeframe_type, 'startAt': int(start_time_s)}
+    logging.info(f"Récupération de ~{limit} bougies pour {symbol} type {timeframe_type} depuis {datetime.fromtimestamp(start_time_s, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
+
+    try:
+        response = requests.get(BASE_URL + path, params=params, timeout=20)
+        if response.status_code == 200:
+            data = response.json().get('data', [])
+            if not data:
+                logging.warning(f"Aucune donnée kline reçue pour {symbol} {timeframe_type}.")
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(data, columns=['Open time', 'Open', 'Close', 'High', 'Low', 'Volume', 'Turnover'])
+            df['Open time'] = pd.to_datetime(df['Open time'], unit='s', utc=True)
+            df.set_index('Open time', inplace=True)
+            df = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+            df.sort_index(ascending=True, inplace=True) 
+            
+            if len(df) >= limit * 0.85: # Accepter si on a au moins 85% des données attendues
+                df_to_use = df.iloc[-limit:] if len(df) > limit else df 
+                save_klines_locally(df_to_use, symbol, timeframe_type) 
+                return df_to_use
+            else:
+                logging.warning(f"Pas assez de bougies ({len(df)}/{limit*0.85:.0f} min) pour {symbol} {timeframe_type}.")
+                return pd.DataFrame()
+        elif response.status_code == 429: # Too Many Requests
+            logging.warning(f"Rate limit (429) pour {symbol} {timeframe_type}. Le dashboard ne récupérera pas de données cette fois.")
+            return pd.DataFrame() # Ne pas relancer de boucle ici pour le dashboard
+        else:
+            logging.error(f"Erreur API KuCoin (klines): {response.status_code} - {response.text} pour GET {path} avec params {params}")
+            return pd.DataFrame()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Erreur de requête (klines) vers KuCoin: {e}")
+        return pd.DataFrame()
+
+
 def generate_sma_crossover_signals(df_period_in, sma_short_len, sma_long_len):
     # ... (Copiez la fonction de paper_trader.py)
     df_p = df_period_in.copy(); sma_short_col = f'SMA_{sma_short_len}'; sma_long_col = f'SMA_{sma_long_len}'
